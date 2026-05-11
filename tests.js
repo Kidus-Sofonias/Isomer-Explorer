@@ -1,0 +1,149 @@
+const app = require("./app.js");
+
+const expectedCounts = {
+  1: 1,
+  2: 1,
+  3: 1,
+  4: 2,
+  5: 3,
+  6: 5,
+  7: 9,
+  8: 18,
+  9: 35,
+  10: 75,
+  11: 159,
+  12: 355
+};
+
+for (const [carbonText, expected] of Object.entries(expectedCounts)) {
+  const carbon = Number(carbonText);
+  const actual = app.generateAlkaneIsomers(carbon).length;
+  if (actual !== expected) {
+    throw new Error(`C${carbon} expected ${expected} isomers, got ${actual}`);
+  }
+}
+
+const c4 = app.analyzeFormula("C4H10").isomers.map((isomer) => isomer.name);
+for (const name of ["butane", "2-methylpropane"]) {
+  if (!c4.includes(name)) {
+    throw new Error(`C4H10 is missing ${name}`);
+  }
+}
+
+const c6 = app.analyzeFormula("C6H14").isomers.map((isomer) => isomer.name);
+for (const name of [
+  "hexane",
+  "2-methylpentane",
+  "3-methylpentane",
+  "2,2-dimethylbutane",
+  "2,3-dimethylbutane"
+]) {
+  if (!c6.includes(name)) {
+    throw new Error(`C6H14 is missing ${name}`);
+  }
+}
+
+const c7 = app.analyzeFormula("C7H16").isomers.map((isomer) => isomer.name);
+for (const name of [
+  "heptane",
+  "2-methylhexane",
+  "3-methylhexane",
+  "3-ethylpentane",
+  "2,2,3-trimethylbutane"
+]) {
+  if (!c7.includes(name)) {
+    throw new Error(`C7H16 is missing ${name}`);
+  }
+}
+
+const c5Alkenes = app.analyzeFormula("C5H10", "alkene").isomers.map((isomer) => isomer.name);
+for (const name of [
+  "pent-1-ene",
+  "pent-2-ene",
+  "2-methylbut-1-ene",
+  "2-methylbut-2-ene",
+  "3-methylbut-1-ene"
+]) {
+  if (!c5Alkenes.includes(name)) {
+    throw new Error(`C5H10 alkene mode is missing ${name}`);
+  }
+}
+
+const c5Alkynes = app.analyzeFormula("C5H8", "alkyne").isomers.map((isomer) => isomer.name);
+for (const name of ["pent-1-yne", "pent-2-yne", "3-methylbut-1-yne"]) {
+  if (!c5Alkynes.includes(name)) {
+    throw new Error(`C5H8 alkyne mode is missing ${name}`);
+  }
+}
+
+const c8Aromatics = app.analyzeFormula("C8H10", "aromatic").isomers.map((isomer) => isomer.name);
+for (const name of [
+  "ethylbenzene",
+  "1,2-dimethylbenzene",
+  "1,3-dimethylbenzene",
+  "1,4-dimethylbenzene"
+]) {
+  if (!c8Aromatics.includes(name)) {
+    throw new Error(`C8H10 aromatic mode is missing ${name}`);
+  }
+}
+
+const benzene = app.analyzeFormula("C6H6", "auto");
+if (benzene.status !== "ok" || benzene.family !== "aromatic" || benzene.isomers[0].name !== "benzene") {
+  throw new Error("C6H6 should be recognized as benzene in aromatic mode");
+}
+
+const nameLookup = app.analyzeQuery("pent-2-ene", "auto");
+if (
+  nameLookup.status !== "ok" ||
+  nameLookup.source !== "name" ||
+  nameLookup.formula !== "C5H10" ||
+  nameLookup.isomers[0].name !== "pent-2-ene"
+) {
+  throw new Error("IUPAC name lookup should resolve pent-2-ene and put it first");
+}
+
+const aromaticNameLookup = app.analyzeQuery("ethylbenzene", "auto");
+if (
+  aromaticNameLookup.status !== "ok" ||
+  aromaticNameLookup.family !== "aromatic" ||
+  aromaticNameLookup.formula !== "C8H10"
+) {
+  throw new Error("IUPAC name lookup should resolve ethylbenzene as C8H10 aromatic");
+}
+
+const aliasLookup = app.analyzeQuery("toluene", "auto");
+if (
+  aliasLookup.status !== "ok" ||
+  aliasLookup.matchedName !== "methylbenzene" ||
+  aliasLookup.formula !== "C7H8"
+) {
+  throw new Error("Common aromatic aliases should resolve to their supported IUPAC entries");
+}
+
+const formulaLookup = app.analyzeQuery("C5H10", "auto");
+if (formulaLookup.status !== "ok" || formulaLookup.source === "name" || formulaLookup.family !== "alkene") {
+  throw new Error("Formula-looking input should still resolve as a formula");
+}
+
+const largeParsedName = app.analyzeQuery("4-ethyl-2-methyl-5-propylnonane", "auto");
+if (
+  largeParsedName.status !== "ok" ||
+  largeParsedName.source !== "parsed-name" ||
+  largeParsedName.formula !== "C15H32" ||
+  largeParsedName.isomers.length !== 1
+) {
+  throw new Error("Advanced IUPAC parser should resolve 4-ethyl-2-methyl-5-propylnonane as C15H32");
+}
+
+const parsedAlkene = app.analyzeQuery("4-ethyl-2-methylnon-3-ene", "auto");
+if (parsedAlkene.status !== "ok" || parsedAlkene.family !== "alkene" || parsedAlkene.formula !== "C12H24") {
+  throw new Error("Advanced IUPAC parser should resolve branched acyclic alkenes");
+}
+
+const parsedAromatic = app.analyzeQuery("1-butyl-3-propylbenzene", "auto");
+if (parsedAromatic.status !== "ok" || parsedAromatic.family !== "aromatic" || parsedAromatic.formula !== "C13H20") {
+  throw new Error("Advanced IUPAC parser should resolve larger alkylbenzene names");
+}
+
+console.log("All tests passed.");
