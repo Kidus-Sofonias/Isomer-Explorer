@@ -97,17 +97,20 @@ const nameLookup = app.analyzeQuery("pent-2-ene", "auto");
 if (
   nameLookup.status !== "ok" ||
   nameLookup.source !== "name" ||
+  nameLookup.nameOnly !== true ||
   nameLookup.formula !== "C5H10" ||
+  nameLookup.isomers.length !== 1 ||
   nameLookup.isomers[0].name !== "pent-2-ene"
 ) {
-  throw new Error("IUPAC name lookup should resolve pent-2-ene and put it first");
+  throw new Error("IUPAC name lookup should resolve pent-2-ene as one compound");
 }
 
 const aromaticNameLookup = app.analyzeQuery("ethylbenzene", "auto");
 if (
   aromaticNameLookup.status !== "ok" ||
   aromaticNameLookup.family !== "aromatic" ||
-  aromaticNameLookup.formula !== "C8H10"
+  aromaticNameLookup.formula !== "C8H10" ||
+  aromaticNameLookup.isomers.length !== 1
 ) {
   throw new Error("IUPAC name lookup should resolve ethylbenzene as C8H10 aromatic");
 }
@@ -116,9 +119,56 @@ const aliasLookup = app.analyzeQuery("toluene", "auto");
 if (
   aliasLookup.status !== "ok" ||
   aliasLookup.matchedName !== "methylbenzene" ||
-  aliasLookup.formula !== "C7H8"
+  aliasLookup.formula !== "C7H8" ||
+  aliasLookup.isomers.length !== 1
 ) {
   throw new Error("Common aromatic aliases should resolve to their supported IUPAC entries");
+}
+
+const isobutaneLookup = app.analyzeQuery("isobutane", "auto");
+if (
+  isobutaneLookup.status !== "ok" ||
+  isobutaneLookup.matchedName !== "2-methylpropane" ||
+  isobutaneLookup.matchedAlias !== "isobutane" ||
+  isobutaneLookup.formula !== "C4H10" ||
+  isobutaneLookup.isomers.length !== 1
+) {
+  throw new Error("Common alkane aliases should resolve to their IUPAC structures");
+}
+
+const neooctaneLookup = app.analyzeQuery("neooctane", "auto");
+if (
+  neooctaneLookup.status !== "ok" ||
+  neooctaneLookup.matchedName !== "2,2-dimethylhexane" ||
+  neooctaneLookup.formula !== "C8H18" ||
+  neooctaneLookup.isomers.length !== 1
+) {
+  throw new Error("Neo alkane aliases should resolve, including neooctane");
+}
+
+const specificDecaneName = app.analyzeQuery("4-ethyl-2,3-dimethylhexane", "auto");
+if (
+  specificDecaneName.status !== "ok" ||
+  specificDecaneName.nameOnly !== true ||
+  specificDecaneName.formula !== "C10H22" ||
+  specificDecaneName.isomers.length !== 1 ||
+  specificDecaneName.isomers[0].name !== "4-ethyl-2,3-dimethylhexane"
+) {
+  throw new Error("Specific IUPAC alkane names should show one compound, not the full formula isomer list");
+}
+
+const secButaneLookup = app.analyzeQuery("sec butane", "auto");
+if (secButaneLookup.status !== "unsupported" || !/not a standalone alkane/.test(secButaneLookup.message)) {
+  throw new Error("sec-butane should receive friendly naming guidance instead of a generic error");
+}
+
+const pentane = app.analyzeFormula("C5H12", "alkane").isomers.find((isomer) => isomer.name === "pentane");
+const pentaneBondline = app.buildDiagramSvg(pentane.adjacency, pentane.chain, pentane.edgeOrders, "bondline");
+if (!pentaneBondline.includes('class="bondline"') || pentaneBondline.includes("bondline-node")) {
+  throw new Error("Bond-line diagrams should render as skeletal line art without carbon node dots");
+}
+if (!/y1="148" x2="[^"]+" y2="88"/.test(pentaneBondline)) {
+  throw new Error("Bond-line diagrams should use a zigzag chain layout");
 }
 
 const formulaLookup = app.analyzeQuery("C5H10", "auto");

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Liquid hydrocarbon mark</title>
+  <desc id="desc">A glossy liquid droplet with a small carbon bond motif.</desc>
+  <defs>
+    <linearGradient id="drop" x1="24" y1="18" x2="132" y2="146" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ff5df"/>
+      <stop offset="0.48" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#315a7e"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="44" cy="35" r="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="0.52" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-shadow" x="-25%" y="-20%" width="150%" height="155%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#0b2827" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <path filter="url(#soft-shadow)" fill="url(#drop)" d="M80 10c18 27 45 55 45 88 0 29-20 50-45 50s-45-21-45-50c0-33 27-61 45-88z"/>
+  <path fill="url(#shine)" d="M80 16c17 26 39 51 39 79 0 26-17 45-39 45S41 121 41 95c0-28 22-53 39-79z"/>
+  <path fill="none" stroke="#ffffff" stroke-linecap="round" stroke-width="9" opacity="0.88" d="M55 82h25l18-20"/>
+  <path fill="none" stroke="#d9fff7" stroke-linecap="round" stroke-width="7" opacity="0.9" d="M80 82l18 24h27"/>
+  <circle cx="55" cy="82" r="9" fill="#f7fffd"/>
+  <circle cx="80" cy="82" r="10" fill="#f7fffd"/>
+  <circle cx="98" cy="62" r="9" fill="#f7fffd"/>
+  <circle cx="125" cy="106" r="9" fill="#f7fffd"/>
+  <path fill="none" stroke="#ffffff" stroke-linecap="round" stroke-width="8" opacity="0.82" d="M61 42c-10 9-16 22-16 35"/>
+</svg>

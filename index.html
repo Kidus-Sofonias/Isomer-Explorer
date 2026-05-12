@@ -4,15 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hydrocarbon Isomer Explorer</title>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
+  <body class="surface-glass">
     <main class="app-shell">
       <section class="workspace">
         <div class="control-panel">
-          <div>
-            <p class="eyebrow">Hydrocarbon isomer explorer</p>
-            <h1>Find hydrocarbon isomers from a formula or IUPAC name.</h1>
+          <div class="hero-heading">
+            <img class="brand-logo" src="assets/liquid-logo.svg" alt="" width="72" height="72">
+            <div>
+              <p class="eyebrow">Hydrocarbon isomer explorer</p>
+              <h1>Find hydrocarbon isomers from a formula or IUPAC name.</h1>
+            </div>
           </div>
 
           <form class="formula-form" data-formula-form>
@@ -22,36 +26,60 @@
                 id="formula-input"
                 data-formula-input
                 type="text"
-                value="4-ethyl-2-methyl-5-propylnonane"
+                list="recent-inputs"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="C5H10 or 4-ethyl-2-methyl-5-propylnonane"
+                placeholder="C5H12, isobutane, pent-2-ene..."
               >
               <button type="submit">Analyze</button>
             </div>
+            <datalist id="recent-inputs" data-recent-list></datalist>
+            <div class="recent-inputs" data-recent-inputs hidden>
+              <span>Recent</span>
+              <div data-recent-buttons></div>
+            </div>
           </form>
 
-          <div class="family-filter">
-            <p>Family filter</p>
-            <div class="mode-control" aria-label="Hydrocarbon family">
-              <button type="button" class="active" data-mode="auto">Auto</button>
-              <button type="button" data-mode="alkane">Alkane</button>
-              <button type="button" data-mode="alkene">Alkene</button>
-              <button type="button" data-mode="alkyne">Alkyne</button>
-              <button type="button" data-mode="aromatic">Aromatic</button>
-            </div>
+          <div class="mobile-flow" aria-label="How to use the explorer">
+            <span>1. Enter</span>
+            <span>2. Analyze</span>
+            <span>3. Inspect</span>
           </div>
 
-          <div class="view-filter">
-            <p>Structure view</p>
-            <div class="view-control" aria-label="Structure view">
-              <button type="button" class="active" data-view-mode="atom">Atom labels</button>
-              <button type="button" data-view-mode="bondline">Bond-line</button>
+          <details class="settings-drawer" open>
+            <summary>Structure options</summary>
+            <div class="settings-grid">
+              <label class="select-control" for="family-select">
+                <span>Family</span>
+                <select id="family-select" data-mode-select>
+                  <option value="auto">Auto</option>
+                  <option value="alkane">Alkane</option>
+                  <option value="alkene">Alkene</option>
+                  <option value="alkyne">Alkyne</option>
+                  <option value="aromatic">Aromatic</option>
+                </select>
+              </label>
+              <label class="select-control" for="view-select">
+                <span>View</span>
+                <select id="view-select" data-view-select>
+                  <option value="atom" selected>Atom labels</option>
+                  <option value="bondline">Bond-line</option>
+                </select>
+              </label>
+              <label class="select-control" for="theme-select">
+                <span>Theme</span>
+                <select id="theme-select" data-theme-select>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </select>
+              </label>
             </div>
-          </div>
+          </details>
 
           <div class="examples" aria-label="Example formulas">
-            <button type="button" data-example="4-ethyl-2-methyl-5-propylnonane" data-example-mode="auto">branched name</button>
+            <button type="button" data-example="isobutane" data-example-mode="auto">isobutane</button>
+            <button type="button" data-example="neooctane" data-example-mode="auto">neooctane</button>
             <button type="button" data-example="C5H12" data-example-mode="alkane">C5H12</button>
             <button type="button" data-example="C5H10" data-example-mode="alkene">C5H10</button>
             <button type="button" data-example="C5H8" data-example-mode="alkyne">C5H8</button>
@@ -69,10 +97,14 @@
         <aside class="result-panel" data-summary aria-live="polite"></aside>
       </section>
 
-      <section class="results-section">
+      <section class="results-section" data-results-section>
         <div class="section-heading">
           <h2 data-results-title>Isomers</h2>
           <p data-count-label></p>
+        </div>
+        <div class="analysis-progress" data-analysis-progress hidden>
+          <span></span>
+          <strong>Building structures</strong>
         </div>
         <div class="isomer-grid" data-results></div>
       </section>
@@ -80,8 +112,8 @@
 
     <template id="empty-state-template">
       <div class="empty-state">
-        <h3>No isomers to display</h3>
-        <p>Enter a formula such as C5H10 or an IUPAC name such as pent-2-ene.</p>
+        <h3>Ready when you are</h3>
+        <p>Enter a formula such as C5H10 or a name such as isobutane, pent-2-ene, or toluene.</p>
       </div>
     </template>
 
@@ -102,33 +134,43 @@
       </section>
     </div>
 
+    <div class="analysis-popup" data-analysis-popup hidden>
+      <section class="popup-panel" role="dialog" aria-modal="true" aria-labelledby="popup-title">
+        <button type="button" class="popup-close" data-popup-close aria-label="Close message">Close</button>
+        <p class="eyebrow">A quick chemistry note</p>
+        <h2 id="popup-title" data-popup-title></h2>
+        <p data-popup-message></p>
+        <div class="popup-hints" data-popup-hints></div>
+      </section>
+    </div>
+
     <div class="tour-backdrop" data-tour hidden>
       <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
         <div class="tour-visual" aria-hidden="true">
           <div class="tour-showcase">
             <div class="demo-topline">
               <span></span>
-              <strong>Kidus Sofonias</strong>
+              <strong>Quick start</strong>
             </div>
             <div class="demo-search">
-              <span>4-ethyl-2-methyl-5-propylnonane</span>
+              <span>isobutane</span>
               <b>Analyze</b>
             </div>
             <div class="demo-filter-row">
               <span class="active">Auto</span>
-              <span>Alkane</span>
-              <span>Aromatic</span>
+              <span>Atom labels</span>
+              <span>Light</span>
             </div>
             <div class="demo-result-card">
-              <p>Parsed structure</p>
-              <strong>C15H32</strong>
+              <p>Step 4: open the result</p>
+              <strong>C4H10</strong>
               <div class="demo-molecule">
                 <i></i><i></i><i></i><i></i><i></i>
               </div>
             </div>
             <div class="demo-mini-grid">
               <span>Formula</span>
-              <span>Name</span>
+              <span>Names</span>
               <span>Bond-line</span>
             </div>
             <div class="demo-cursor"></div>
@@ -137,24 +179,29 @@
           </div>
         </div>
         <div class="tour-copy">
-          <p class="eyebrow">Made by Kidus Sofonias</p>
-          <h2 id="tour-title">Formula in. Name in. Structure out.</h2>
-          <p>Auto handles the normal flow. The family filter is there only when a formula could mean more than one hydrocarbon family.</p>
-          <div class="tour-feature-grid">
+          <p class="eyebrow">How to use it</p>
+          <h2 id="tour-title">Build a structure in four steps.</h2>
+          <p>Start simple. The explorer will read formulas, IUPAC names, and common names, then move you to the result on smaller screens.</p>
+          <div class="tour-step-list">
             <article>
               <span>01</span>
-              <strong>Analyze formulas</strong>
-              <p>C5H12, C5H10, C5H8, and aromatic formulas.</p>
+              <strong>Enter a formula or name</strong>
+              <p>Try C5H12, isobutane, pent-2-ene, toluene, or a supported IUPAC name.</p>
             </article>
             <article>
               <span>02</span>
-              <strong>Parse IUPAC names</strong>
-              <p>Simple names and larger branched acyclic names.</p>
+              <strong>Keep Family on Auto</strong>
+              <p>Only switch family when you want to force alkane, alkene, alkyne, or aromatic results.</p>
             </article>
             <article>
               <span>03</span>
-              <strong>Inspect structures</strong>
-              <p>Open fullscreen and switch between labels and bond-line.</p>
+              <strong>Tap Analyze</strong>
+              <p>On phones, the page scrolls to the progress and result area so the response is obvious.</p>
+            </article>
+            <article>
+              <span>04</span>
+              <strong>Inspect the card</strong>
+              <p>Use Open for a larger view, or switch between atom labels and zig-zag bond-line mode.</p>
             </article>
           </div>
           <div class="tour-actions">

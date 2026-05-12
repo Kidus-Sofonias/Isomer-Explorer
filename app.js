@@ -134,6 +134,55 @@
     "dodecyl"
   ];
 
+  var COMMON_NAME_ALIASES = {
+    butane: ["n-butane", "normal butane"],
+    "2-methylpropane": ["isobutane", "i-butane"],
+    pentane: ["n-pentane", "normal pentane"],
+    "2-methylbutane": ["isopentane", "i-pentane"],
+    "2,2-dimethylpropane": ["neopentane", "neo-pentane"],
+    hexane: ["n-hexane", "normal hexane"],
+    "2-methylpentane": ["isohexane", "i-hexane"],
+    "2,2-dimethylbutane": ["neohexane", "neo-hexane"],
+    heptane: ["n-heptane", "normal heptane"],
+    "2-methylhexane": ["isoheptane", "i-heptane"],
+    "2,2-dimethylpentane": ["neoheptane", "neo-heptane"],
+    octane: ["n-octane", "normal octane"],
+    "2,2,4-trimethylpentane": ["isooctane", "iso-octane"],
+    "2,2-dimethylhexane": ["neooctane", "neo-octane"],
+    nonane: ["n-nonane", "normal nonane"],
+    decane: ["n-decane", "normal decane"],
+    undecane: ["n-undecane", "normal undecane"],
+    dodecane: ["n-dodecane", "normal dodecane"],
+    methylbenzene: ["toluene"],
+    "1,2-dimethylbenzene": ["o-xylene", "ortho-xylene"],
+    "1,3-dimethylbenzene": ["m-xylene", "meta-xylene"],
+    "1,4-dimethylbenzene": ["p-xylene", "para-xylene"],
+    "(1-methylethyl)benzene": ["isopropylbenzene", "cumene"],
+    ethene: ["ethylene"],
+    ethyne: ["acetylene"]
+  };
+
+  var FRIENDLY_NAME_GUIDANCE = {
+    secbutane: {
+      title: "sec-butane is a naming trap",
+      message:
+        "sec- is normally used for a butyl substituent attachment point, not a standalone alkane. For C4H10, use butane/n-butane for the straight chain or isobutane for the branched isomer.",
+      hints: ["Try butane", "Try n-butane", "Try isobutane"]
+    },
+    secondarybutane: {
+      title: "secondary butane is not a standard input",
+      message:
+        "People use secondary to describe a carbon environment. The displayable C4H10 names here are butane/n-butane and isobutane.",
+      hints: ["Try butane", "Try isobutane"]
+    },
+    tertbutane: {
+      title: "tert-butane is not a standalone alkane",
+      message:
+        "tert- is used for tert-butyl groups and related substituent names. For a C4 hydrocarbon, try butane or isobutane.",
+      hints: ["Try butane", "Try isobutane"]
+    }
+  };
+
   var SIMPLE_MULTIPLIERS = [
     "",
     "",
@@ -199,6 +248,18 @@
 
   function formatFormula(carbon, hydrogen) {
     return "C" + (carbon === 1 ? "" : carbon) + "H" + (hydrogen === 1 ? "" : hydrogen);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (character) {
+      return {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[character];
+    });
   }
 
   function parseFormula(input) {
@@ -1156,6 +1217,27 @@
     }
   }
 
+  function layoutBondLineBranch(adjacency, node, parent, coords, x, y, direction, depth) {
+    coords.set(node, { x: x, y: y });
+    var children = adjacency[node].filter(function (next) {
+      return next !== parent;
+    });
+    for (var i = 0; i < children.length; i += 1) {
+      var centerOffset = (i - (children.length - 1) / 2) * 30;
+      var swing = depth % 2 === 0 ? -44 : 44;
+      layoutBondLineBranch(
+        adjacency,
+        children[i],
+        node,
+        coords,
+        x + swing + centerOffset,
+        y + direction * 52,
+        direction,
+        depth + 1
+      );
+    }
+  }
+
   function bondLineMarkup(a, b, order) {
     var dx = b.x - a.x;
     var dy = b.y - a.y;
@@ -1184,12 +1266,14 @@
   function buildDiagramSvg(adjacency, chain, edgeOrders, viewMode) {
     var isBondLine = viewMode === "bondline";
     var coords = new Map();
-    var spacing = 76;
-    var baseY = 130;
+    var spacing = isBondLine ? 68 : 76;
+    var baseY = isBondLine ? 118 : 130;
+    var zigzag = isBondLine ? 30 : 0;
     var chainSet = new Set(chain);
 
     for (var i = 0; i < chain.length; i += 1) {
-      coords.set(chain[i], { x: 46 + i * spacing, y: baseY });
+      var chainY = isBondLine && chain.length > 1 ? baseY + (i % 2 === 0 ? zigzag : -zigzag) : baseY;
+      coords.set(chain[i], { x: 46 + i * spacing, y: chainY });
     }
 
     for (var c = 0; c < chain.length; c += 1) {
@@ -1198,18 +1282,34 @@
         return !chainSet.has(next);
       });
       for (var b = 0; b < branches.length; b += 1) {
-        var direction = (c + b) % 2 === 0 ? -1 : 1;
-        var offset = (b - (branches.length - 1) / 2) * 40;
-        layoutBranch(
-          adjacency,
-          branches[b],
-          atom,
-          coords,
-          coords.get(atom).x + offset,
-          baseY + direction * 64,
-          direction,
-          1
-        );
+        var parentPoint = coords.get(atom);
+        var direction = isBondLine
+          ? parentPoint.y <= baseY ? -1 : 1
+          : (c + b) % 2 === 0 ? -1 : 1;
+        var offset = (b - (branches.length - 1) / 2) * (isBondLine ? 30 : 40);
+        if (isBondLine) {
+          layoutBondLineBranch(
+            adjacency,
+            branches[b],
+            atom,
+            coords,
+            parentPoint.x + offset + (direction > 0 ? 38 : -38),
+            parentPoint.y + direction * 58,
+            direction,
+            1
+          );
+        } else {
+          layoutBranch(
+            adjacency,
+            branches[b],
+            atom,
+            coords,
+            parentPoint.x + offset,
+            baseY + direction * 64,
+            direction,
+            1
+          );
+        }
       }
     }
 
@@ -1237,7 +1337,7 @@
     for (var atom = 0; atom < adjacency.length; atom += 1) {
       var point = coords.get(atom);
       if (isBondLine) {
-        nodes.push('<circle class="bondline-node" cx="' + point.x + '" cy="' + point.y + '" r="3.5"></circle>');
+        continue;
       } else {
         nodes.push(
           '<g><circle class="atom" cx="' + point.x + '" cy="' + point.y + '" r="22"></circle>' +
@@ -1398,6 +1498,16 @@
     return null;
   }
 
+  function unsupportedFormulaHints(parsed, family) {
+    if (parsed.carbon > MAX_CARBONS) {
+      return ["Use a supported IUPAC name for one structure", "Try C12H26 or smaller", "Keep Auto mode on"];
+    }
+    if (family && FAMILY_INFO[family]) {
+      return ["Switch back to Auto", "Check the family formula " + FAMILY_INFO[family].pattern];
+    }
+    return ["Try Auto mode", "Try CnH2n+2 for alkanes", "Try a name like isobutane"];
+  }
+
   function unsupportedFormula(parsed, dbe, family, message) {
     return {
       status: "unsupported",
@@ -1407,6 +1517,8 @@
       dbe: dbe,
       family: family,
       familyLabel: family && FAMILY_INFO[family] ? FAMILY_INFO[family].label : "Hydrocarbon",
+      popupTitle: "I can read this formula, but cannot display it yet",
+      hints: unsupportedFormulaHints(parsed, family),
       message: message
     };
   }
@@ -1491,6 +1603,7 @@
           adjacency: isomer.adjacency,
           edgeOrders: null,
           name: naming.name,
+          commonNames: nameAliases(naming.name),
           chain: naming.chain,
           substituents: naming.substituents
         };
@@ -1507,6 +1620,7 @@
           multipleBond: isomer.multipleBond,
           bondOrder: bondOrder,
           name: naming.name,
+          commonNames: nameAliases(naming.name),
           chain: naming.chain,
           substituents: naming.substituents
         };
@@ -1517,6 +1631,7 @@
           family: family,
           canonical: isomer.canonical,
           name: isomer.name,
+          commonNames: nameAliases(isomer.name),
           sequence: isomer.sequence,
           substituents: isomer.substituents
         };
@@ -1542,18 +1657,25 @@
   }
 
   function addNameIndexEntry(index, isomer, analysis, aliases) {
-    var entry = {
+    var baseEntry = {
       name: isomer.name,
+      commonNames: aliases || [],
       formula: analysis.formula,
       family: analysis.family,
       familyLabel: analysis.familyLabel,
       canonical: isomer.canonical
     };
-    var names = [isomer.name].concat(aliases || []);
+    var names = [{ value: isomer.name, common: false }].concat((aliases || []).map(function (alias) {
+      return { value: alias, common: true };
+    }));
 
     for (var i = 0; i < names.length; i += 1) {
-      var strict = normalizeName(names[i]);
-      var loose = looseNameKey(names[i]);
+      var strict = normalizeName(names[i].value);
+      var loose = looseNameKey(names[i].value);
+      var entry = Object.assign({}, baseEntry, {
+        matchedInputName: names[i].value,
+        matchedAlias: names[i].common ? names[i].value : null
+      });
       if (strict && !index.strict.has(strict)) {
         index.strict.set(strict, entry);
       }
@@ -1564,16 +1686,7 @@
   }
 
   function nameAliases(name) {
-    var aliases = {
-      methylbenzene: ["toluene"],
-      "1,2-dimethylbenzene": ["o-xylene", "ortho-xylene"],
-      "1,3-dimethylbenzene": ["m-xylene", "meta-xylene"],
-      "1,4-dimethylbenzene": ["p-xylene", "para-xylene"],
-      "(1-methylethyl)benzene": ["isopropylbenzene", "cumene"],
-      ethene: ["ethylene"],
-      ethyne: ["acetylene"]
-    };
-    return aliases[name] || [];
+    return COMMON_NAME_ALIASES[name] || [];
   }
 
   function buildLinearBranch(adjacency, attachAtom, length) {
@@ -1712,6 +1825,7 @@
         family: family,
         canonical: "parsed:" + name,
         name: original,
+        commonNames: nameAliases(original),
         adjacency: adjacency,
         edgeOrders: edgeOrders.size ? edgeOrders : null,
         chain: Array.from({ length: parentLength }, function (_, index) {
@@ -1746,6 +1860,7 @@
           family: "aromatic",
           canonical: "parsed:" + name,
           name: original,
+          commonNames: nameAliases(original),
           sequence: [null, null, null, null, null, null],
           substituents: []
         }]
@@ -1817,6 +1932,7 @@
         family: "aromatic",
         canonical: "parsed:" + name,
         name: original,
+        commonNames: nameAliases(original),
         sequence: sequence,
         substituents: substituents
       }]
@@ -1853,6 +1969,7 @@
           addNameIndexEntry(index, isomer, analysis, nameAliases(isomer.name));
           index.entries.push({
             name: isomer.name,
+            commonNames: isomer.commonNames || [],
             formula: analysis.formula,
             family: analysis.family,
             familyLabel: analysis.familyLabel,
@@ -1877,10 +1994,13 @@
       if (selectedFamily && selectedFamily !== "auto" && entry.family !== selectedFamily) {
         continue;
       }
-      var entryLoose = looseNameKey(entry.name);
-      if ((entryLoose.indexOf(loose) !== -1 || loose.indexOf(entryLoose) !== -1) && !seen.has(entry.name)) {
-        suggestions.push(entry.name);
-        seen.add(entry.name);
+      var candidates = [entry.name].concat(entry.commonNames || []);
+      for (var c = 0; c < candidates.length && suggestions.length < 6; c += 1) {
+        var entryLoose = looseNameKey(candidates[c]);
+        if ((entryLoose.indexOf(loose) !== -1 || loose.indexOf(entryLoose) !== -1) && !seen.has(candidates[c])) {
+          suggestions.push(candidates[c]);
+          seen.add(candidates[c]);
+        }
       }
     }
 
@@ -1897,6 +2017,18 @@
     var match = index.strict.get(name) || index.loose.get(looseNameKey(input));
 
     if (!match) {
+      var guidance = FRIENDLY_NAME_GUIDANCE[looseNameKey(input)];
+      if (guidance) {
+        return {
+          status: "unsupported",
+          formula: String(input || "").trim(),
+          familyLabel: selectedFamily && selectedFamily !== "auto" && FAMILY_INFO[selectedFamily] ? FAMILY_INFO[selectedFamily].label : "Auto",
+          popupTitle: guidance.title,
+          hints: guidance.hints,
+          message: guidance.message
+        };
+      }
+
       try {
         var parsed = parseAromaticIupacName(input) || parseAcyclicIupacName(input);
         if (parsed) {
@@ -1921,6 +2053,8 @@
           status: "unsupported",
           formula: String(input || "").trim(),
           familyLabel: selectedFamily && selectedFamily !== "auto" && FAMILY_INFO[selectedFamily] ? FAMILY_INFO[selectedFamily].label : "Auto",
+          popupTitle: "This name is close, but not displayable yet",
+          hints: ["Try a supported IUPAC name", "Use Auto mode"],
           message: error.message
         };
       }
@@ -1930,6 +2064,8 @@
         status: "unsupported",
         formula: String(input || "").trim(),
         familyLabel: selectedFamily && selectedFamily !== "auto" && FAMILY_INFO[selectedFamily] ? FAMILY_INFO[selectedFamily].label : "Auto",
+        popupTitle: "I cannot draw that name yet",
+        hints: suggestions.length ? suggestions : ["Try C5H12", "Try isobutane", "Try pent-2-ene"],
         message:
           "That name is not in the current supported hydrocarbon set. Try an IUPAC name such as pent-2-ene, ethylbenzene, or 2-methylpropane." +
           (suggestions.length ? " Close matches: " + suggestions.join(", ") + "." : "")
@@ -1952,18 +2088,20 @@
     }
 
     var analysis = analyzeFormula(match.formula, match.family);
+    var matchedIsomer = analysis.isomers.find(function (isomer) {
+      return isomer.canonical === match.canonical;
+    });
     analysis.source = "name";
     analysis.queryName = String(input || "").trim();
     analysis.matchedName = match.name;
+    analysis.matchedAlias = match.matchedAlias;
+    analysis.matchedInputName = match.matchedInputName;
     analysis.matchedCanonical = match.canonical;
-    analysis.isomers.sort(function (a, b) {
-      if (a.canonical === match.canonical && b.canonical !== match.canonical) {
-        return -1;
-      }
-      if (b.canonical === match.canonical && a.canonical !== match.canonical) {
-        return 1;
-      }
-      return compareStrings(a.name, b.name);
+    analysis.nameOnly = true;
+    analysis.scope =
+      "Matched a specific hydrocarbon name. Formula isomer lists are shown only when you enter a formula.";
+    analysis.isomers = matchedIsomer ? [matchedIsomer] : analysis.isomers.filter(function (isomer) {
+      return isomer.canonical === match.canonical;
     });
     return analysis;
   }
@@ -1976,7 +2114,35 @@
   }
 
   function metric(label, value) {
-    return '<div class="metric"><span>' + label + '</span><strong>' + value + "</strong></div>";
+    return '<div class="metric"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + "</strong></div>";
+  }
+
+  function renderIdleSummary(target) {
+    if (!target) {
+      return;
+    }
+    target.innerHTML =
+      '<h2 class="status-title">Start with a formula or name</h2>' +
+      '<p class="status-copy">Use Auto for most inputs. Common names like isobutane, neopentane, neooctane, toluene, and xylene aliases are understood.</p>' +
+      '<div class="metric-grid">' +
+      metric("Step 1", "Enter") +
+      metric("Step 2", "Analyze") +
+      metric("Step 3", "Inspect") +
+      metric("Default view", "Atom labels") +
+      "</div>";
+  }
+
+  function renderAnalyzingSummary(target, displayMode) {
+    if (!target) {
+      return;
+    }
+    target.innerHTML =
+      '<h2 class="status-title">Analyzing structure</h2>' +
+      '<p class="status-copy">Checking the formula or name, choosing the right hydrocarbon family, and preparing the structure cards.</p>' +
+      '<div class="metric-grid">' +
+      metric("Status", "Working") +
+      metric("View", displayMode === "bondline" ? "Bond-line" : "Atom labels") +
+      "</div>";
   }
 
   function renderSummary(target, analysis) {
@@ -1984,11 +2150,16 @@
       return;
     }
 
+    if (analysis.status === "idle") {
+      renderIdleSummary(target);
+      return;
+    }
+
     if (analysis.status === "error") {
       target.innerHTML =
         '<h2 class="status-title">Check the formula</h2>' +
         '<p class="status-copy">' +
-        analysis.message +
+        escapeHtml(analysis.message) +
         "</p>";
       return;
     }
@@ -2003,10 +2174,10 @@
           : metric("Mode", analysis.familyLabel || "Auto");
       target.innerHTML =
         '<h2 class="status-title">' +
-        analysis.formula +
+        escapeHtml(analysis.formula) +
         "</h2>" +
         '<p class="status-copy">' +
-        analysis.message +
+        escapeHtml(analysis.message) +
         "</p>" +
         '<div class="metric-grid">' +
         unsupportedMetrics +
@@ -2016,10 +2187,10 @@
 
     target.innerHTML =
       '<h2 class="status-title">' +
-      analysis.formula +
+      escapeHtml(analysis.formula) +
       "</h2>" +
       '<p class="status-copy">' +
-      analysis.scope +
+      escapeHtml(analysis.scope) +
       "</p>" +
       '<div class="metric-grid">' +
       metric("Carbons", analysis.carbon) +
@@ -2027,13 +2198,17 @@
       metric("DBE", analysis.dbe) +
       metric("Family", analysis.familyLabel) +
       metric("Formula", analysis.familyPattern) +
-      metric(analysis.parsedOnly ? "Structure" : "Isomers", analysis.isomers.length) +
-      (analysis.source === "name" || analysis.source === "parsed-name" ? metric("Input", analysis.matchedName) : "") +
+      metric(analysis.parsedOnly || analysis.nameOnly ? "Structure" : "Isomers", analysis.isomers.length) +
+      (analysis.source === "name" || analysis.source === "parsed-name" ? metric("Input", analysis.matchedAlias ? analysis.matchedAlias : analysis.matchedName) : "") +
       "</div>" +
       (analysis.parsedOnly
         ? '<p class="notice">This structure was parsed directly from the name. Full isomer enumeration is still limited to formulas through C' +
           MAX_CARBONS +
           ".</p>"
+        : analysis.nameOnly
+        ? '<p class="notice">This name resolves to one structure. Enter ' +
+          escapeHtml(analysis.formula) +
+          " if you want the full formula isomer list.</p>"
         : '<p class="notice">The app counts constitutional isomers. Stereoisomers, conformers, and non-selected family alternatives with the same formula are not counted separately.</p>');
   }
 
@@ -2066,15 +2241,23 @@
       countLabel.textContent =
         analysis.parsedOnly
           ? "Parsed IUPAC hydrocarbon structure"
+          : analysis.nameOnly
+          ? "Matched " + (analysis.matchedAlias ? analysis.matchedAlias + " (" + analysis.matchedName + ")" : analysis.matchedName) + " as one compound"
           : analysis.source === "name"
-          ? "Matched " + analysis.matchedName + " within " + analysis.isomers.length + " related " + analysis.familyLabel.toLowerCase() + " isomers"
+          ? "Matched " +
+            (analysis.matchedAlias ? analysis.matchedAlias + " (" + analysis.matchedName + ")" : analysis.matchedName) +
+            " within " +
+            analysis.isomers.length +
+            " related " +
+            analysis.familyLabel.toLowerCase() +
+            " isomers"
           : analysis.isomers.length +
             " " +
             analysis.familyLabel.toLowerCase() +
             " constitutional " +
             (analysis.isomers.length === 1 ? "isomer" : "isomers");
     }
-    if (titleTarget && analysis.parsedOnly) {
+    if (titleTarget && (analysis.parsedOnly || analysis.nameOnly)) {
       titleTarget.textContent = "Compound";
     }
 
@@ -2082,7 +2265,8 @@
       var isomer = analysis.isomers[i];
       var card = document.createElement("article");
       card.className = "isomer-card";
-      if (analysis.parsedOnly || (analysis.matchedCanonical && isomer.canonical === analysis.matchedCanonical)) {
+      card.style.setProperty("--card-index", String(i));
+      if (analysis.parsedOnly || analysis.nameOnly || (analysis.matchedCanonical && isomer.canonical === analysis.matchedCanonical)) {
         card.classList.add("matched-card");
       }
 
@@ -2099,12 +2283,20 @@
       formula.textContent =
         analysis.parsedOnly
           ? analysis.formula + " | parsed from IUPAC name"
+          : analysis.nameOnly
+          ? analysis.formula + " | matched " + (analysis.matchedAlias ? analysis.matchedAlias : "name")
           :
         analysis.matchedCanonical && isomer.canonical === analysis.matchedCanonical
-          ? analysis.formula + " | matched name"
+          ? analysis.formula + " | matched " + (analysis.matchedAlias ? analysis.matchedAlias : "name")
           : analysis.formula;
       titleBlock.appendChild(title);
       titleBlock.appendChild(formula);
+      if (isomer.commonNames && isomer.commonNames.length) {
+        var common = document.createElement("p");
+        common.className = "common-name-line";
+        common.textContent = "Also called " + isomer.commonNames.slice(0, 3).join(", ");
+        titleBlock.appendChild(common);
+      }
       header.appendChild(pill);
       header.appendChild(titleBlock);
       var openButton = document.createElement("button");
@@ -2127,12 +2319,19 @@
   function mount() {
     var form = document.querySelector("[data-formula-form]");
     var input = document.querySelector("[data-formula-input]");
+    var analyzeButton = form ? form.querySelector('button[type="submit"]') : null;
     var summary = document.querySelector("[data-summary]");
     var results = document.querySelector("[data-results]");
+    var resultsSection = document.querySelector("[data-results-section]");
+    var progress = document.querySelector("[data-analysis-progress]");
     var resultsTitle = document.querySelector("[data-results-title]");
     var countLabel = document.querySelector("[data-count-label]");
     var modeButtons = document.querySelectorAll("[data-mode]");
     var viewButtons = document.querySelectorAll("[data-view-mode]");
+    var modeSelect = document.querySelector("[data-mode-select]");
+    var viewSelect = document.querySelector("[data-view-select]");
+    var themeSelect = document.querySelector("[data-theme-select]");
+    var settingsDrawer = document.querySelector(".settings-drawer");
     var viewer = document.querySelector("[data-compound-viewer]");
     var viewerPanel = viewer ? viewer.querySelector(".viewer-panel") : null;
     var viewerTitle = document.querySelector("[data-viewer-title]");
@@ -2143,16 +2342,55 @@
     var tour = document.querySelector("[data-tour]");
     var tourOpen = document.querySelector("[data-tour-open]");
     var tourClose = document.querySelector("[data-tour-close]");
+    var popup = document.querySelector("[data-analysis-popup]");
+    var popupTitle = document.querySelector("[data-popup-title]");
+    var popupMessage = document.querySelector("[data-popup-message]");
+    var popupHints = document.querySelector("[data-popup-hints]");
+    var popupClose = document.querySelector("[data-popup-close]");
+    var recentList = document.querySelector("[data-recent-list]");
+    var recentPanel = document.querySelector("[data-recent-inputs]");
+    var recentButtons = document.querySelector("[data-recent-buttons]");
     var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+    var themeStorageKey = "hydrocarbon-theme";
     var selectedMode = params.get("family") || "auto";
     var displayMode = params.get("view") === "bondline" ? "bondline" : "atom";
+    var selectedTheme = params.get("theme") || readStoredSetting(themeStorageKey, "light");
     var currentAnalysis = null;
     var tourStorageKey = "hydrocarbon-isomer-tour-seen";
+    var recentStorageKey = "hydrocarbon-recent-inputs";
+    var analyzeTimer = null;
+
+    function readStoredSetting(key, fallback) {
+      try {
+        return localStorage.getItem(key) || fallback;
+      } catch (error) {
+        return fallback;
+      }
+    }
+
+    function writeStoredSetting(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (error) {
+        // Visual settings are optional when storage is blocked.
+      }
+    }
+
+    function isValidChoice(value, choices, fallback) {
+      return choices.indexOf(value) !== -1 ? value : fallback;
+    }
+
+    function systemPrefersDark() {
+      return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches;
+    }
 
     function setMode(mode) {
       selectedMode = mode || "auto";
       for (var i = 0; i < modeButtons.length; i += 1) {
         modeButtons[i].classList.toggle("active", modeButtons[i].getAttribute("data-mode") === selectedMode);
+      }
+      if (modeSelect) {
+        modeSelect.value = selectedMode;
       }
     }
 
@@ -2161,12 +2399,183 @@
       for (var i = 0; i < viewButtons.length; i += 1) {
         viewButtons[i].classList.toggle("active", viewButtons[i].getAttribute("data-view-mode") === displayMode);
       }
+      if (viewSelect) {
+        viewSelect.value = displayMode;
+      }
     }
 
-    function run() {
+    function setTheme(theme) {
+      selectedTheme = isValidChoice(theme || "light", ["light", "dark", "system"], "light");
+      var useDark = selectedTheme === "dark" || (selectedTheme === "system" && systemPrefersDark());
+      document.body.classList.toggle("theme-dark", useDark);
+      document.body.classList.toggle("theme-light", !useDark);
+      if (themeSelect) {
+        themeSelect.value = selectedTheme;
+      }
+      writeStoredSetting(themeStorageKey, selectedTheme);
+    }
+
+    function loadRecentInputs() {
+      try {
+        var parsed = JSON.parse(localStorage.getItem(recentStorageKey) || "[]");
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+        return parsed.filter(function (item) {
+          return typeof item === "string" && item.trim();
+        }).slice(0, 8);
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveRecentInputs(items) {
+      try {
+        localStorage.setItem(recentStorageKey, JSON.stringify(items.slice(0, 8)));
+      } catch (error) {
+        // Recent inputs are a convenience; the app still works when storage is blocked.
+      }
+    }
+
+    function renderRecentInputs() {
+      var items = loadRecentInputs();
+      if (recentList) {
+        recentList.innerHTML = "";
+        for (var i = 0; i < items.length; i += 1) {
+          var option = document.createElement("option");
+          option.value = items[i];
+          recentList.appendChild(option);
+        }
+      }
+
+      if (!recentPanel || !recentButtons) {
+        return;
+      }
+      recentButtons.innerHTML = "";
+      recentPanel.hidden = !items.length;
+      for (var r = 0; r < items.length; r += 1) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = items[r];
+        button.setAttribute("data-recent-value", items[r]);
+        recentButtons.appendChild(button);
+      }
+    }
+
+    function rememberRecentInput(value, analysis) {
+      var trimmed = String(value || "").trim();
+      if (!trimmed || !analysis || analysis.status !== "ok") {
+        return;
+      }
+
+      var items = loadRecentInputs();
+      var key = normalizeName(trimmed);
+      items = items.filter(function (item) {
+        return normalizeName(item) !== key;
+      });
+      items.unshift(trimmed);
+      saveRecentInputs(items);
+      renderRecentInputs();
+    }
+
+    function closeAnalysisPopup() {
+      if (popup) {
+        popup.hidden = true;
+      }
+    }
+
+    function openAnalysisPopup(analysis) {
+      if (!popup || !analysis || (analysis.status !== "unsupported" && analysis.status !== "error")) {
+        return;
+      }
+      popupTitle.textContent = analysis.popupTitle || (analysis.status === "error" ? "That input needs a tweak" : "I cannot display that one yet");
+      popupMessage.textContent = analysis.message || "Try a supported formula or hydrocarbon name.";
+      popupHints.innerHTML = "";
+      var hints = analysis.hints || ["Try C5H12", "Try isobutane", "Try pent-2-ene"];
+      for (var i = 0; i < hints.length; i += 1) {
+        var isAction = /^Try\s+/i.test(hints[i]);
+        var hint = document.createElement(isAction ? "button" : "span");
+        if (isAction) {
+          hint.type = "button";
+          hint.setAttribute("data-popup-example", hints[i].replace(/^Try\s+/i, ""));
+        }
+        hint.textContent = hints[i];
+        popupHints.appendChild(hint);
+      }
+      popup.hidden = false;
+    }
+
+    function setAnalyzing(active) {
+      document.body.classList.toggle("is-analyzing", active);
+      if (analyzeButton) {
+        analyzeButton.disabled = active;
+        analyzeButton.textContent = active ? "Analyzing" : "Analyze";
+      }
+      if (progress) {
+        progress.hidden = !active;
+      }
+    }
+
+    function shouldAutoScroll() {
+      return typeof matchMedia !== "undefined" && matchMedia("(max-width: 760px)").matches;
+    }
+
+    function scrollToResults() {
+      if (!resultsSection || !shouldAutoScroll()) {
+        return;
+      }
+      var targetTop = Math.max(0, resultsSection.getBoundingClientRect().top + window.pageYOffset - 8);
+      window.scrollTo(0, targetTop);
+    }
+
+    function run(options) {
+      options = options || {};
+      closeAnalysisPopup();
+      if (!input.value.trim()) {
+        setAnalyzing(false);
+        currentAnalysis = { status: "idle" };
+        renderSummary(summary, currentAnalysis);
+        renderResults(results, countLabel, currentAnalysis, resultsTitle, displayMode);
+        return;
+      }
       currentAnalysis = analyzeQuery(input.value, selectedMode);
       renderSummary(summary, currentAnalysis);
       renderResults(results, countLabel, currentAnalysis, resultsTitle, displayMode);
+      setAnalyzing(false);
+      if (options.remember) {
+        rememberRecentInput(input.value, currentAnalysis);
+      }
+      if (!options.silent && (currentAnalysis.status === "unsupported" || currentAnalysis.status === "error")) {
+        openAnalysisPopup(currentAnalysis);
+      }
+      if (options.scroll) {
+        scrollToResults();
+      }
+    }
+
+    function queueRun(options) {
+      options = options || {};
+      if (analyzeTimer) {
+        clearTimeout(analyzeTimer);
+      }
+      closeAnalysisPopup();
+      if (!input.value.trim()) {
+        run(options);
+        return;
+      }
+      setAnalyzing(true);
+      renderAnalyzingSummary(summary, displayMode);
+      renderResults(results, countLabel, { status: "idle" }, resultsTitle, displayMode);
+      if (countLabel) {
+        countLabel.textContent = "Building structure cards...";
+      }
+      if (options.scroll) {
+        scrollToResults();
+      }
+      analyzeTimer = setTimeout(function () {
+        analyzeTimer = null;
+        run(options);
+      }, 360);
     }
 
     function openCompoundViewer(index) {
@@ -2212,7 +2621,7 @@
 
     form.addEventListener("submit", function (event) {
       event.preventDefault();
-      run();
+      queueRun({ remember: true, scroll: true });
     });
 
     for (var m = 0; m < modeButtons.length; m += 1) {
@@ -2226,6 +2635,26 @@
       viewButtons[v].addEventListener("click", function (event) {
         setDisplayMode(event.currentTarget.getAttribute("data-view-mode"));
         run();
+      });
+    }
+
+    if (modeSelect) {
+      modeSelect.addEventListener("change", function (event) {
+        setMode(event.currentTarget.value);
+        run();
+      });
+    }
+
+    if (viewSelect) {
+      viewSelect.addEventListener("change", function (event) {
+        setDisplayMode(event.currentTarget.value);
+        run();
+      });
+    }
+
+    if (themeSelect) {
+      themeSelect.addEventListener("change", function (event) {
+        setTheme(event.currentTarget.value);
       });
     }
 
@@ -2262,6 +2691,9 @@
       if (event.key === "Escape" && viewer && !viewer.hidden) {
         closeCompoundViewer();
       }
+      if (event.key === "Escape" && popup && !popup.hidden) {
+        closeAnalysisPopup();
+      }
     });
 
     var exampleButtons = document.querySelectorAll("[data-example]");
@@ -2269,7 +2701,45 @@
       exampleButtons[i].addEventListener("click", function (event) {
         input.value = event.currentTarget.getAttribute("data-example");
         setMode(event.currentTarget.getAttribute("data-example-mode") || "auto");
-        run();
+        queueRun({ remember: true, scroll: true });
+        input.focus();
+      });
+    }
+
+    if (recentButtons) {
+      recentButtons.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-recent-value]");
+        if (!button) {
+          return;
+        }
+        input.value = button.getAttribute("data-recent-value");
+        queueRun({ remember: true, scroll: true });
+        input.focus();
+      });
+    }
+
+    if (popupClose) {
+      popupClose.addEventListener("click", closeAnalysisPopup);
+    }
+
+    if (popup) {
+      popup.addEventListener("click", function (event) {
+        if (event.target === popup) {
+          closeAnalysisPopup();
+        }
+      });
+    }
+
+    if (popupHints) {
+      popupHints.addEventListener("click", function (event) {
+        var button = event.target.closest("[data-popup-example]");
+        if (!button) {
+          return;
+        }
+        input.value = button.getAttribute("data-popup-example");
+        setMode("auto");
+        closeAnalysisPopup();
+        queueRun({ remember: true, scroll: true });
         input.focus();
       });
     }
@@ -2292,7 +2762,25 @@
 
     setMode(selectedMode);
     setDisplayMode(displayMode);
-    run();
+    setTheme(selectedTheme);
+    renderRecentInputs();
+    if (typeof matchMedia !== "undefined") {
+      var darkPreference = matchMedia("(prefers-color-scheme: dark)");
+      var updateSystemTheme = function () {
+        if (selectedTheme === "system") {
+          setTheme("system");
+        }
+      };
+      if (darkPreference.addEventListener) {
+        darkPreference.addEventListener("change", updateSystemTheme);
+      } else if (darkPreference.addListener) {
+        darkPreference.addListener(updateSystemTheme);
+      }
+    }
+    if (settingsDrawer && typeof matchMedia !== "undefined" && matchMedia("(max-width: 760px)").matches) {
+      settingsDrawer.open = false;
+    }
+    run({ silent: true });
 
     if (params.get("open") === "0") {
       openCompoundViewer(0);

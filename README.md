@@ -17,14 +17,21 @@ Open `index.html` in a browser and enter formulas such as:
 - `C5H8`
 - `C8H10`
 - `C10H14`
+- `isobutane`
+- `neopentane`
+- `neooctane`
+- `toluene`
 - `4-ethyl-2-methyl-5-propylnonane`
 - `1-butyl-3-propylbenzene`
 
-The app validates the formula, calculates degree of unsaturation, enumerates the selected family, names each isomer, and draws a simple carbon-skeleton or aromatic-ring diagram.
+The app validates the formula, calculates degree of unsaturation, enumerates the selected family, names each isomer, recognizes common hydrocarbon aliases, and draws a carbon-skeleton, zigzag bond-line, or aromatic-ring diagram.
 
 ## Viewer Features
 
 - Switch between atom-label and bond-line structure views.
+- Use common names such as isobutane, neopentane, neooctane, toluene, xylene aliases, ethylene, and acetylene.
+- Recent successful inputs are saved locally in the browser for quick reuse; no database is needed.
+- Switch between warmer light, dark, and system themes. Liquid-glass surfaces are always on.
 - Open any compound card in a fullscreen viewer.
 - Use Auto mode first; family filters are optional for forcing alkane, alkene, alkyne, or aromatic behavior.
 
