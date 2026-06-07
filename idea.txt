@@ -1,0 +1,19 @@
+__Expand compound families__ — Add __esters__, __ethers__ (full enumeration), __carboxylic acids__, __aldehydes__, __ketones__, and __amines__ as enumerated families (currently these are only parsed from names, not enumerated from formulas)
+
+__Degree of Unsaturation (DBE) explanation__ — Show a tooltip or expandable explanation of what DBE means and how it maps to rings/double bonds/triple bonds
+
+__Functional group highlighting__ — In the diagram, visually highlight the functional group (OH, Br, etc.) with a distinct color glow or label style
+
+__Copy isomer name/formula__ — Add a "copy" button on each card to quickly copy the IUPAC name or molecular formula
+
+__Animated card entrance__ — Stagger the card fade-in animation so they cascade in rather than all appearing at once
+
+__"Surprise me" button__ — Add a random query button that picks a random formula or compound name for discovery/learning
+
+__Interactive SVG diagrams__ — Make the 2D SVG diagrams clickable/hoverable — hovering on an atom highlights it and shows its label and connected atoms
+
+__Improved mobile layout__ — The settings drawer could use a bottom-sheet pattern on mobile instead of an inline `<details>` element
+
+__Progressive isomer loading__ — Show isomers as they're generated rather than waiting for all of them (use `requestIdleCallback` or streaming)
+
+__Print-friendly mode__ — Add a print stylesheet that lays out isomers in a clean grid for worksheets or study materials

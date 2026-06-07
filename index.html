@@ -3,51 +3,56 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hydrocarbon Isomer Explorer</title>
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Isomer Explorer">
+    <title>Isomer Explorer</title>
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body class="surface-glass">
+    <div class="app-actions" aria-label="App actions">
+      <button type="button" class="app-action" data-share-open aria-label="Share">
+        <span aria-hidden="true">&#x2197;</span>
+        <span>Share</span>
+      </button>
+      <button type="button" class="app-action" data-install-app aria-label="Install" hidden>
+        <span aria-hidden="true">&#x2B07;</span>
+        <span>Install</span>
+      </button>
+    </div>
+
     <main class="app-shell">
       <section class="workspace">
         <div class="control-panel">
           <div class="hero-heading">
-            <img class="brand-logo" src="assets/liquid-logo.svg" alt="" width="72" height="72">
+            <img class="brand-logo" src="assets/liquid-logo.svg" alt="" width="48" height="48">
             <div>
-              <p class="eyebrow">Hydrocarbon isomer explorer</p>
-              <h1>Find hydrocarbon isomers from a formula or IUPAC name.</h1>
+              <p class="eyebrow">Isomer Explorer</p>
+              <h1>Find structures from a formula or name.</h1>
             </div>
           </div>
 
-          <form class="formula-form" data-formula-form>
-            <label for="formula-input">Formula or IUPAC name</label>
+          <form class="formula-form" data-formula-form autocomplete="off">
+            <label for="formula-input">Formula or name</label>
             <div class="input-row">
               <input
                 id="formula-input"
                 data-formula-input
                 type="text"
-                list="recent-inputs"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="C5H12, isobutane, pent-2-ene..."
+                placeholder="C5H12, isobutane, acetone..."
               >
-              <button type="submit">Analyze</button>
+              <button type="submit">Go</button>
             </div>
-            <datalist id="recent-inputs" data-recent-list></datalist>
-            <div class="recent-inputs" data-recent-inputs hidden>
-              <span>Recent</span>
-              <div data-recent-buttons></div>
-            </div>
+            <div class="suggestions-dropdown" data-suggestions-dropdown hidden></div>
           </form>
 
-          <div class="mobile-flow" aria-label="How to use the explorer">
-            <span>1. Enter</span>
-            <span>2. Analyze</span>
-            <span>3. Inspect</span>
-          </div>
-
           <details class="settings-drawer" open>
-            <summary>Structure options</summary>
+            <summary>Options</summary>
             <div class="settings-grid">
               <label class="select-control" for="family-select">
                 <span>Family</span>
@@ -57,6 +62,14 @@
                   <option value="alkene">Alkene</option>
                   <option value="alkyne">Alkyne</option>
                   <option value="aromatic">Aromatic</option>
+                  <option value="haloalkane">Haloalkane</option>
+                  <option value="alcohol">Alcohol</option>
+                  <option value="ester">Ester</option>
+                  <option value="ether">Ether</option>
+                  <option value="carboxylic acid">Carboxylic Acid</option>
+                  <option value="aldehyde">Aldehyde</option>
+                  <option value="ketone">Ketone</option>
+                  <option value="amine">Amine</option>
                 </select>
               </label>
               <label class="select-control" for="view-select">
@@ -64,6 +77,7 @@
                 <select id="view-select" data-view-select>
                   <option value="atom" selected>Atom labels</option>
                   <option value="bondline">Bond-line</option>
+                  <option value="3d">3D</option>
                 </select>
               </label>
               <label class="select-control" for="theme-select">
@@ -77,20 +91,18 @@
             </div>
           </details>
 
-          <div class="examples" aria-label="Example formulas">
-            <button type="button" data-example="isobutane" data-example-mode="auto">isobutane</button>
-            <button type="button" data-example="neooctane" data-example-mode="auto">neooctane</button>
+          <div class="examples" aria-label="Quick examples">
             <button type="button" data-example="C5H12" data-example-mode="alkane">C5H12</button>
-            <button type="button" data-example="C5H10" data-example-mode="alkene">C5H10</button>
-            <button type="button" data-example="C5H8" data-example-mode="alkyne">C5H8</button>
-            <button type="button" data-example="C8H10" data-example-mode="aromatic">C8H10</button>
+            <button type="button" data-example="C6H6" data-example-mode="aromatic">C6H6</button>
+            <button type="button" data-example="acetone" data-example-mode="auto">acetone</button>
+            <button type="button" data-example="acetic acid" data-example-mode="auto">acetic acid</button>
+            <button type="button" data-example="C5H11Br" data-example-mode="haloalkane">C5H11Br</button>
+            <button type="button" class="surprise-btn" data-example="surprise" data-example-mode="auto">&#x2728; Surprise me</button>
           </div>
 
           <footer class="creator">
             <span>Made by Kidus Sofonias</span>
             <a href="https://github.com/Kidus-Sofonias" target="_blank" rel="noreferrer">GitHub</a>
-            <a href="mailto:sofoniaskidus@gmail.com">sofoniaskidus@gmail.com</a>
-            <button type="button" data-tour-open>Show tour</button>
           </footer>
         </div>
 
@@ -113,7 +125,7 @@
     <template id="empty-state-template">
       <div class="empty-state">
         <h3>Ready when you are</h3>
-        <p>Enter a formula such as C5H10 or a name such as isobutane, pent-2-ene, or toluene.</p>
+        <p>Enter a formula like C5H12 or a name like isobutane, acetone, or toluene.</p>
       </div>
     </template>
 
@@ -136,72 +148,74 @@
 
     <div class="analysis-popup" data-analysis-popup hidden>
       <section class="popup-panel" role="dialog" aria-modal="true" aria-labelledby="popup-title">
-        <button type="button" class="popup-close" data-popup-close aria-label="Close message">Close</button>
-        <p class="eyebrow">A quick chemistry note</p>
+        <button type="button" class="popup-close" data-popup-close aria-label="Close">Close</button>
+        <p class="eyebrow">Quick note</p>
         <h2 id="popup-title" data-popup-title></h2>
         <p data-popup-message></p>
         <div class="popup-hints" data-popup-hints></div>
       </section>
     </div>
 
-    <div class="tour-backdrop" data-tour hidden>
-      <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-        <div class="tour-visual" aria-hidden="true">
-          <div class="tour-showcase">
-            <div class="demo-topline">
-              <span></span>
-              <strong>Quick start</strong>
-            </div>
-            <div class="demo-search">
-              <span>isobutane</span>
-              <b>Analyze</b>
-            </div>
-            <div class="demo-filter-row">
-              <span class="active">Auto</span>
-              <span>Atom labels</span>
-              <span>Light</span>
-            </div>
-            <div class="demo-result-card">
-              <p>Step 4: open the result</p>
-              <strong>C4H10</strong>
-              <div class="demo-molecule">
-                <i></i><i></i><i></i><i></i><i></i>
-              </div>
-            </div>
-            <div class="demo-mini-grid">
-              <span>Formula</span>
-              <span>Names</span>
-              <span>Bond-line</span>
-            </div>
-            <div class="demo-cursor"></div>
-            <div class="tap-ring tap-one"></div>
-            <div class="tap-ring tap-two"></div>
+    <div class="share-sheet" data-share-sheet hidden>
+      <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <button type="button" class="popup-close" data-share-close aria-label="Close">Close</button>
+        <p class="eyebrow">Share</p>
+        <h2 id="share-title">Share the explorer</h2>
+        <p>Share a link or scan the QR code.</p>
+        <div class="share-link-row">
+          <input type="text" data-share-url readonly aria-label="Share link">
+          <button type="button" data-copy-share>Copy</button>
+        </div>
+        <div class="share-body">
+          <div class="qr-card">
+            <img data-qr-code alt="QR code" width="200" height="200" loading="lazy">
+            <span>Scan to open</span>
+          </div>
+          <div class="share-options" aria-label="Social share links">
+            <button type="button" data-native-share hidden>Share via device</button>
+            <a href="#" target="_blank" rel="noreferrer" data-social-share="whatsapp">WhatsApp</a>
+            <a href="#" target="_blank" rel="noreferrer" data-social-share="x">X</a>
+            <a href="#" target="_blank" rel="noreferrer" data-social-share="telegram">Telegram</a>
+            <a href="#" data-social-share="email">Email</a>
           </div>
         </div>
+        <p class="share-status" data-share-status aria-live="polite"></p>
+      </section>
+    </div>
+
+    <div class="install-sheet" data-install-sheet hidden>
+      <section class="install-panel" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <button type="button" class="popup-close" data-install-close aria-label="Close">Close</button>
+        <p class="eyebrow">Install</p>
+        <h2 id="install-title">Add to home screen</h2>
+        <div class="install-steps" data-install-steps>
+          <article><span>1</span><p>Open your browser menu.</p></article>
+          <article><span>2</span><p>Choose Install app or Add to Home Screen.</p></article>
+          <article><span>3</span><p>Launch from the new icon.</p></article>
+        </div>
+      </section>
+    </div>
+
+    <div class="tour-backdrop" data-tour hidden>
+      <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
         <div class="tour-copy">
-          <p class="eyebrow">How to use it</p>
-          <h2 id="tour-title">Build a structure in four steps.</h2>
-          <p>Start simple. The explorer will read formulas, IUPAC names, and common names, then move you to the result on smaller screens.</p>
+          <p class="eyebrow">How to use</p>
+          <h2 id="tour-title">Find structures in 3 steps</h2>
           <div class="tour-step-list">
             <article>
-              <span>01</span>
+              <span>1</span>
               <strong>Enter a formula or name</strong>
-              <p>Try C5H12, isobutane, pent-2-ene, toluene, or a supported IUPAC name.</p>
+              <p>Try C5H12, isobutane, acetone, or toluene.</p>
             </article>
             <article>
-              <span>02</span>
-              <strong>Keep Family on Auto</strong>
-              <p>Only switch family when you want to force alkane, alkene, alkyne, or aromatic results.</p>
+              <span>2</span>
+              <strong>Tap Go</strong>
+              <p>The explorer finds matching isomers.</p>
             </article>
             <article>
-              <span>03</span>
-              <strong>Tap Analyze</strong>
-              <p>On phones, the page scrolls to the progress and result area so the response is obvious.</p>
-            </article>
-            <article>
-              <span>04</span>
-              <strong>Inspect the card</strong>
-              <p>Use Open for a larger view, or switch between atom labels and zig-zag bond-line mode.</p>
+              <span>3</span>
+              <strong>Inspect the cards</strong>
+              <p>Open for a larger view or switch to bond-line mode.</p>
             </article>
           </div>
           <div class="tour-actions">
@@ -211,6 +225,7 @@
       </section>
     </div>
 
+    <script src="vendor/qrcode.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

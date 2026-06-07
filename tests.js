@@ -162,6 +162,36 @@ if (secButaneLookup.status !== "unsupported" || !/not a standalone alkane/.test(
   throw new Error("sec-butane should receive friendly naming guidance instead of a generic error");
 }
 
+const typoNameLookup = app.analyzeQuery("isobutan", "auto");
+if (
+  typoNameLookup.status !== "unsupported" ||
+  !/does not exist as written/.test(typoNameLookup.message) ||
+  !typoNameLookup.suggestions ||
+  !typoNameLookup.suggestions.includes("isobutane")
+) {
+  throw new Error("Invalid names should explain that they do not exist and suggest close valid names");
+}
+
+const invalidLocantLookup = app.analyzeQuery("but-6-ene", "auto");
+if (
+  invalidLocantLookup.status !== "unsupported" ||
+  !/multiple-bond locant/.test(invalidLocantLookup.message) ||
+  !invalidLocantLookup.suggestions ||
+  !invalidLocantLookup.suggestions.includes("but-1-ene")
+) {
+  throw new Error("Invalid locants should include a specific reason and nearby valid compounds");
+}
+
+const invalidFormulaLookup = app.analyzeQuery("C5H13", "auto");
+if (
+  invalidFormulaLookup.status !== "error" ||
+  !/does not exist as written/.test(invalidFormulaLookup.popupTitle) ||
+  !invalidFormulaLookup.suggestions ||
+  !invalidFormulaLookup.suggestions.includes("C5H12")
+) {
+  throw new Error("Invalid formulas should suggest nearby valid hydrocarbon formulas");
+}
+
 const pentane = app.analyzeFormula("C5H12", "alkane").isomers.find((isomer) => isomer.name === "pentane");
 const pentaneBondline = app.buildDiagramSvg(pentane.adjacency, pentane.chain, pentane.edgeOrders, "bondline");
 if (!pentaneBondline.includes('class="bondline"') || pentaneBondline.includes("bondline-node")) {
@@ -194,6 +224,97 @@ if (parsedAlkene.status !== "ok" || parsedAlkene.family !== "alkene" || parsedAl
 const parsedAromatic = app.analyzeQuery("1-butyl-3-propylbenzene", "auto");
 if (parsedAromatic.status !== "ok" || parsedAromatic.family !== "aromatic" || parsedAromatic.formula !== "C13H20") {
   throw new Error("Advanced IUPAC parser should resolve larger alkylbenzene names");
+}
+
+const bromoFormula = app.analyzeQuery("C5H11Br", "auto");
+if (
+  bromoFormula.status !== "ok" ||
+  bromoFormula.family !== "haloalkane" ||
+  bromoFormula.formula !== "C5H11Br" ||
+  !bromoFormula.isomers.some((isomer) => isomer.name === "1-bromopentane") ||
+  !bromoFormula.isomers.some((isomer) => isomer.name === "3-bromopentane")
+) {
+  throw new Error("Haloalkane formulas should enumerate bromoalkane derivatives");
+}
+
+const namedBromide = app.analyzeQuery("1-bromopentane", "auto");
+if (
+  namedBromide.status !== "ok" ||
+  namedBromide.family !== "haloalkane" ||
+  namedBromide.formula !== "C5H11Br" ||
+  namedBromide.isomers.length !== 1
+) {
+  throw new Error("Simple haloalkane names should parse to one derivative structure");
+}
+
+const namedDibromide = app.analyzeQuery("1,1-dibromopentane", "auto");
+if (
+  namedDibromide.status !== "ok" ||
+  namedDibromide.family !== "haloalkane" ||
+  namedDibromide.formula !== "C5H10Br2" ||
+  namedDibromide.isomers.length !== 1 ||
+  namedDibromide.isomers[0].attachments.length !== 2
+) {
+  throw new Error("Polyhaloalkane names with repeated locants should parse to one derivative structure");
+}
+
+const branchedChloroalkane = app.analyzeQuery("2-Chloro-4-ethyl-3-methylhexane", "auto");
+if (
+  branchedChloroalkane.status !== "ok" ||
+  branchedChloroalkane.family !== "haloalkane" ||
+  branchedChloroalkane.formula !== "C9H19Cl" ||
+  branchedChloroalkane.isomers.length !== 1 ||
+  branchedChloroalkane.isomers[0].adjacency.length !== 9 ||
+  branchedChloroalkane.isomers[0].attachments.length !== 1
+) {
+  throw new Error("Branched haloalkane names should parse alkyl and halogen prefixes together");
+}
+
+const alcoholFormula = app.analyzeQuery("C2H5OH", "auto");
+if (
+  alcoholFormula.status !== "ok" ||
+  alcoholFormula.family !== "alcohol" ||
+  alcoholFormula.formula !== "C2H6O" ||
+  alcoholFormula.isomers[0].name !== "ethanol"
+) {
+  throw new Error("Alcohol group formulas such as C2H5OH should resolve to alcohol structures");
+}
+
+const butanolFormula = app.analyzeQuery("C4H10O", "auto");
+if (
+  butanolFormula.status !== "ok" ||
+  butanolFormula.family !== "alcohol" ||
+  butanolFormula.isomers.length !== 4 ||
+  !butanolFormula.isomers.some((isomer) => isomer.name === "butan-2-ol")
+) {
+  throw new Error("Alcohol formulas should enumerate saturated alcohol isomers");
+}
+
+const bromoDiagram = app.buildDiagramSvg(
+  namedBromide.isomers[0].adjacency,
+  namedBromide.isomers[0].chain,
+  namedBromide.isomers[0].edgeOrders,
+  "atom",
+  namedBromide.isomers[0].attachments
+);
+if (!bromoDiagram.includes(">Br<") || !bromoDiagram.includes("hetero-br")) {
+  throw new Error("Derivative diagrams should render hetero atom labels");
+}
+
+const dibromoDiagram = app.buildDiagramSvg(
+  namedDibromide.isomers[0].adjacency,
+  namedDibromide.isomers[0].chain,
+  namedDibromide.isomers[0].edgeOrders,
+  "atom",
+  namedDibromide.isomers[0].attachments
+);
+if ((dibromoDiagram.match(/>Br</g) || []).length !== 2) {
+  throw new Error("Polyhaloalkane diagrams should render each halogen attachment");
+}
+
+const bromoModel = app.molecule3DModel(namedBromide.isomers[0]);
+if (!bromoModel.atoms.some((atom) => atom.element === "Br") || !bromoModel.bonds.length) {
+  throw new Error("3D molecule models should include derivative hetero atoms and bonds");
 }
 
 console.log("All tests passed.");
