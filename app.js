@@ -90,6 +90,29 @@
     iodo: "I"
   };
 
+  var BENZENE_SUBSTITUENT_GROUPS = {
+    fluoro: { code: "fluoro", size: 0, name: "fluoro", sortKey: "fluoro", label: "F", extraElements: {}, extraHydrogens: 0 },
+    chloro: { code: "chloro", size: 0, name: "chloro", sortKey: "chloro", label: "Cl", extraElements: {}, extraHydrogens: 0 },
+    bromo: { code: "bromo", size: 0, name: "bromo", sortKey: "bromo", label: "Br", extraElements: {}, extraHydrogens: 0 },
+    iodo: { code: "iodo", size: 0, name: "iodo", sortKey: "iodo", label: "I", extraElements: {}, extraHydrogens: 0 },
+    hydroxy: { code: "hydroxy", size: 0, name: "hydroxy", sortKey: "hydroxy", label: "OH", extraElements: { O: 1 }, extraHydrogens: 1 },
+    amino: { code: "amino", size: 0, name: "amino", sortKey: "amino", label: "NH\u2082", extraElements: { N: 1 }, extraHydrogens: 2 },
+    carboxy: { code: "carboxy", size: 1, name: "carboxy", sortKey: "carboxy", label: "COOH", extraElements: { O: 2 }, extraHydrogens: 1 },
+    formyl: { code: "formyl", size: 1, name: "formyl", sortKey: "formyl", label: "CHO", extraElements: { O: 1 }, extraHydrogens: 1 },
+    acetyl: { code: "acetyl", size: 2, name: "acetyl", sortKey: "acetyl", label: "COCH\u2083", extraElements: { O: 1 }, extraHydrogens: 3 },
+    methoxy: { code: "methoxy", size: 1, name: "methoxy", sortKey: "methoxy", label: "OCH\u2083", extraElements: { O: 1 }, extraHydrogens: 3 },
+    nitro: { code: "nitro", size: 0, name: "nitro", sortKey: "nitro", label: "NO\u2082", extraElements: { N: 1, O: 2 }, extraHydrogens: 0 }
+  };
+
+  var ORTHO_META_PARA_MAP = {
+    o: 2,
+    ortho: 2,
+    m: 3,
+    meta: 3,
+    p: 4,
+    para: 4
+  };
+
   var STEMS = [
     "",
     "meth",
@@ -2171,7 +2194,25 @@
     "propylamine": "propan-1-amine",
     "isopropylamine": "propan-2-amine",
     "aniline": "benzenamine",
-    "pyridine": "azine"
+    "phenol": "hydroxybenzene",
+    "benzoic acid": "benzoicacid",
+    "benzaldehyde": "formylbenzene",
+    "styrene": "vinylbenzene",
+    "anisole": "methoxybenzene",
+    "pyridine": "azine",
+    "furan": "furan",
+    "pyrrole": "pyrrole",
+    "thiophene": "thiophene",
+    "imidazole": "imidazole",
+    "naphthalene": "naphthalene",
+    "cresol": "methylphenol",
+    "o-cresol": "2-methylphenol",
+    "m-cresol": "3-methylphenol",
+    "p-cresol": "4-methylphenol",
+    "benzyl alcohol": "phenylmethanol",
+    "catechol": "benzene-1,2-diol",
+    "resorcinol": "benzene-1,3-diol",
+    "hydroquinone": "benzene-1,4-diol"
   };
 
   function formulaFromGraph(adjacency, edgeOrders) {
@@ -2808,6 +2849,167 @@
     };
   }
 
+  function parseBenzeneSubstituentList(prefix, parentLength) {
+    var text = normalizeName(prefix).replace(/-$/, "");
+    var substituents = [];
+    if (!text) {
+      return substituents;
+    }
+
+    while (text.length) {
+      var match = text.match(/^(\d+(?:,\d+)*)-(?:(di|tri|tetra|penta|hexa|hepta|octa|nona|deca)?-?(isopropyl|isobutyl|sec-butyl|tert-butyl|neopentyl|methyl|ethyl|propyl|butyl|pentyl|hexyl|heptyl|octyl|nonyl|decyl|undecyl|dodecyl|fluoro|chloro|bromo|iodo|hydroxy|amino|carboxy|formyl|acetyl|methoxy|nitro))/);
+      if (!match) {
+        throw new Error("Cannot parse benzene substituent: " + text);
+      }
+
+      var locants = match[1].split(",").map(function (l) { return Number(l); });
+      var multiplier = match[2] || "";
+      var subName = match[3];
+      var expected = multiplier ? MULTIPLIER_COUNTS[multiplier] : 1;
+
+      if (locants.length !== expected) {
+        throw new Error(subName + " has " + locants.length + " locants but the multiplier expects " + expected + ".");
+      }
+
+      var isBranched = BRANCHED_SUBSTITUENT_INFO[subName];
+      var isAlkyl = ALKYL_LENGTHS[subName];
+      var isHeteroatom = BENZENE_SUBSTITUENT_GROUPS[subName];
+
+      for (var i = 0; i < locants.length; i += 1) {
+        if (!Number.isInteger(locants[i]) || locants[i] < 1 || locants[i] > parentLength) {
+          throw new Error("Substituent locants must be inside the parent chain.");
+        }
+        
+        if (isHeteroatom) {
+          substituents.push({
+            locant: locants[i],
+            name: isHeteroatom.name,
+            length: isHeteroatom.size,
+            sortKey: isHeteroatom.sortKey,
+            extraElements: isHeteroatom.extraElements,
+            extraHydrogens: isHeteroatom.extraHydrogens
+          });
+        } else if (isAlkyl) {
+          substituents.push({
+            locant: locants[i],
+            name: subName,
+            length: isAlkyl,
+            sortKey: subName,
+            extraElements: {},
+            extraHydrogens: 0
+          });
+        } else if (isBranched) {
+          substituents.push({
+            locant: locants[i],
+            name: subName,
+            length: isBranched.carbons,
+            sortKey: isBranched.sortKey,
+            extraElements: {},
+            extraHydrogens: 0
+          });
+        } else {
+          throw new Error("Unknown benzene substituent: " + subName);
+        }
+      }
+
+      text = text.slice(match[0].length);
+      if (text[0] === "-") {
+        text = text.slice(1);
+      } else if (text.length) {
+        throw new Error("Cannot parse benzene substituent prefix.");
+      }
+    }
+
+    return substituents;
+  }
+
+  function parseOrthoMetaParaBenzeneName(input) {
+    var original = String(input || "").trim();
+    var name = normalizeName(original);
+    var ompMatch = name.match(/^(o|ortho|m|meta|p|para)-(.*?)(benzene)$/);
+    if (!ompMatch) return null;
+    var ompPrefix = ompMatch[1];
+    var substituentPart = ompMatch[2];
+    var secondLocant = ORTHO_META_PARA_MAP[ompPrefix];
+    if (!secondLocant) return null;
+    var fullPrefix = "1-" + substituentPart + ",2-" + substituentPart;
+    var singleSubName = substituentPart.replace(/di$/, "").replace(/tri$/, "").replace(/tetra$/, "");
+    var multiplierMatch = substituentPart.match(/^(di|tri|tetra)/);
+    if (multiplierMatch && singleSubName && (ALKYL_LENGTHS[singleSubName] || BENZENE_SUBSTITUENT_GROUPS[singleSubName] || BRANCHED_SUBSTITUENT_INFO[singleSubName])) {
+      fullPrefix = "";
+      var count = MULTIPLIER_COUNTS[multiplierMatch[1]] || 2;
+      for (var ci = 0; ci < count; ci += 1) {
+        var loc = ci === 0 ? 1 : secondLocant;
+        fullPrefix += (ci > 0 ? "-" : "") + loc + "-" + singleSubName;
+      }
+    } else {
+      return null;
+    }
+    try {
+      return parseAromaticIupacName(original.replace(name, fullPrefix + "benzene"));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  var HETEROCYCLIC_AROMATICS = {
+    furan: { name: "furan", formula: "C4H4O", carbon: 4, hydrogen: 4, dbe: 3, description: "A five-membered aromatic ring containing oxygen." },
+    pyrrole: { name: "pyrrole", formula: "C4H5N", carbon: 4, hydrogen: 5, dbe: 3, description: "A five-membered aromatic ring containing nitrogen." },
+    pyridine: { name: "pyridine", formula: "C5H5N", carbon: 5, hydrogen: 5, dbe: 4, description: "A six-membered aromatic ring containing a nitrogen atom." },
+    thiophene: { name: "thiophene", formula: "C4H4S", carbon: 4, hydrogen: 4, dbe: 3, description: "A five-membered aromatic ring containing sulfur." },
+    imidazole: { name: "imidazole", formula: "C3H4N2", carbon: 3, hydrogen: 4, dbe: 3, description: "A five-membered aromatic ring with two nitrogen atoms." },
+    oxazole: { name: "oxazole", formula: "C3H3NO", carbon: 3, hydrogen: 3, dbe: 3, description: "A five-membered aromatic ring with oxygen and nitrogen." },
+    thiazole: { name: "thiazole", formula: "C3H3NS", carbon: 3, hydrogen: 3, dbe: 3, description: "A five-membered aromatic ring with sulfur and nitrogen." },
+    pyrazole: { name: "pyrazole", formula: "C3H4N2", carbon: 3, hydrogen: 4, dbe: 3, description: "A five-membered aromatic ring with two adjacent nitrogen atoms." },
+    isoxazole: { name: "isoxazole", formula: "C3H3NO", carbon: 3, hydrogen: 3, dbe: 3, description: "A five-membered aromatic ring with adjacent oxygen and nitrogen." },
+    isothiazole: { name: "isothiazole", formula: "C3H3NS", carbon: 3, hydrogen: 3, dbe: 3, description: "A five-membered aromatic ring with adjacent sulfur and nitrogen." },
+    pyrimidine: { name: "pyrimidine", formula: "C4H4N2", carbon: 4, hydrogen: 4, dbe: 4, description: "A six-membered aromatic ring with two nitrogen atoms at 1,3 positions." },
+    pyrazine: { name: "pyrazine", formula: "C4H4N2", carbon: 4, hydrogen: 4, dbe: 4, description: "A six-membered aromatic ring with two nitrogen atoms at 1,4 positions." },
+    pyridazine: { name: "pyridazine", formula: "C4H4N2", carbon: 4, hydrogen: 4, dbe: 4, description: "A six-membered aromatic ring with two nitrogen atoms at 1,2 positions." },
+    indole: { name: "indole", formula: "C8H7N", carbon: 8, hydrogen: 7, dbe: 6, description: "A benzene ring fused to a pyrrole ring." },
+    quinoline: { name: "quinoline", formula: "C9H7N", carbon: 9, hydrogen: 7, dbe: 7, description: "A benzene ring fused to a pyridine ring." },
+    isoquinoline: { name: "isoquinoline", formula: "C9H7N", carbon: 9, hydrogen: 7, dbe: 7, description: "An isomer of quinoline with the nitrogen at a different position." },
+    naphthalene: { name: "naphthalene", formula: "C10H8", carbon: 10, hydrogen: 8, dbe: 7, description: "Two fused benzene rings." },
+    anthracene: { name: "anthracene", formula: "C14H10", carbon: 14, hydrogen: 10, dbe: 10, description: "Three fused benzene rings in a linear arrangement." },
+    phenanthrene: { name: "phenanthrene", formula: "C14H10", carbon: 14, hydrogen: 10, dbe: 10, description: "Three fused benzene rings in an angular arrangement." },
+    coumarin: { name: "coumarin", formula: "C9H6O2", carbon: 9, hydrogen: 6, dbe: 7, description: "A benzene ring fused to a pyrone ring." }
+  };
+
+  function parseHeterocyclicAromaticName(input) {
+    var original = String(input || "").trim();
+    var name = normalizeName(original);
+    var compound = HETEROCYCLIC_AROMATICS[name];
+    if (!compound) return null;
+    var elements = { C: compound.carbon, H: compound.hydrogen, O: 0, F: 0, Cl: 0, Br: 0, I: 0, N: 0 };
+    if (compound.formula.indexOf("O") !== -1) elements.O = (compound.formula.match(/O(\d*)/) || [,"1"])[1] ? Number((compound.formula.match(/O(\d*)/))[1]) : 1;
+    if (compound.formula.indexOf("N") !== -1) elements.N = (compound.formula.match(/N(\d*)/) || [,"1"])[1] ? Number((compound.formula.match(/N(\d*)/))[1]) : 1;
+    if (compound.formula.indexOf("S") !== -1) { /* S not in formatMolecularFormula order but we track it */ }
+    return {
+      status: "ok",
+      family: "aromatic",
+      familyLabel: FAMILY_INFO.aromatic.label,
+      familyPattern: "Heterocyclic aromatic",
+      scope: compound.description,
+      source: "parsed-name",
+      queryName: original,
+      matchedName: compound.name,
+      formula: compound.formula,
+      elements: elements,
+      carbon: compound.carbon,
+      hydrogen: compound.hydrogen,
+      dbe: compound.dbe,
+      parsedOnly: true,
+      isomers: [{
+        family: "aromatic",
+        canonical: "parsed:hetero:" + name,
+        name: compound.name,
+        commonNames: [],
+        sequence: [null, null, null, null, null, null],
+        substituents: []
+      }]
+    };
+  }
+
   function parseAromaticIupacName(input) {
     var original = String(input || "").trim();
     var name = normalizeName(original);
@@ -2852,48 +3054,79 @@
         locant: 1,
         name: prefix,
         length: ALKYL_LENGTHS[prefix],
-        sortKey: prefix
+        sortKey: prefix,
+        extraElements: {},
+        extraHydrogens: 0
+      }];
+    } else if (BENZENE_SUBSTITUENT_GROUPS[prefix]) {
+      var group = BENZENE_SUBSTITUENT_GROUPS[prefix];
+      substituents = [{
+        locant: 1,
+        name: group.name,
+        length: group.size,
+        sortKey: group.sortKey,
+        extraElements: group.extraElements,
+        extraHydrogens: group.extraHydrogens
       }];
     } else {
-      substituents = parseSubstituentPrefix(prefix, 6);
+      substituents = parseBenzeneSubstituentList(prefix, 6);
     }
 
     var occupied = new Set();
     var sequence = [null, null, null, null, null, null];
     var sideCarbons = 0;
     var sideHydrogens = 0;
+    var extraElements = {};
 
     for (var i = 0; i < substituents.length; i += 1) {
       var sub = substituents[i];
       if (occupied.has(sub.locant)) {
-        throw new Error("A benzene ring position cannot hold two alkyl substituents.");
+        throw new Error("A benzene ring position cannot hold two substituents.");
       }
       occupied.add(sub.locant);
-      sideCarbons += sub.length;
-      sideHydrogens += sub.length * 2 + 1;
+      sideCarbons += sub.length || 0;
+      sideHydrogens += (sub.length || 0) * 2 + 1;
+      if (sub.extraElements) {
+        for (var el in sub.extraElements) {
+          extraElements[el] = (extraElements[el] || 0) + sub.extraElements[el];
+        }
+      }
+      if (sub.extraHydrogens) {
+        sideHydrogens += sub.extraHydrogens;
+      }
+      var subLabel = BENZENE_SUBSTITUENT_GROUPS[sub.name]
+        ? BENZENE_SUBSTITUENT_GROUPS[sub.name].label
+        : shortSubstituentLabel(sub.name);
       sequence[sub.locant - 1] = {
         code: sub.name,
-        size: sub.length,
+        size: sub.length || 0,
         name: sub.name,
         sortKey: sub.sortKey,
-        label: shortSubstituentLabel(sub.name)
+        label: subLabel
       };
     }
 
     var carbon = 6 + sideCarbons;
     var hydrogen = 6 - substituents.length + sideHydrogens;
+    var elements = { C: carbon, H: hydrogen, O: 0, F: 0, Cl: 0, Br: 0, I: 0, N: 0 };
+    for (var el2 in extraElements) {
+      elements[el2] = (elements[el2] || 0) + extraElements[el2];
+    }
+    var formula = formatMolecularFormula(elements);
+    var hasHeteroatom = Object.keys(extraElements).length > 0;
 
     return {
       status: "ok",
       family: "aromatic",
       familyLabel: FAMILY_INFO.aromatic.label,
       familyPattern: FAMILY_INFO.aromatic.pattern,
-      scope:
-        "Parsed as a single benzene-ring aromatic hydrocarbon with straight-chain alkyl substituents.",
+      scope: hasHeteroatom
+        ? "Parsed as a substituted aromatic hydrocarbon with heteroatom substituents."
+        : "Parsed as a single benzene-ring aromatic hydrocarbon with substituents.",
       source: "parsed-name",
       queryName: original,
       matchedName: original,
-      formula: formatFormula(carbon, hydrogen),
+      formula: formula,
       carbon: carbon,
       hydrogen: hydrogen,
       dbe: 4,
@@ -3535,8 +3768,8 @@
       var commonIupac = resolveCommonAlias(name);
       try {
         var parsed = commonIupac
-          ? (parseHalobenzeneName(commonIupac) || parseCarboxylicAcidName(commonIupac) || parseAldehydeName(commonIupac) || parseKetoneName(commonIupac) || parseAmineName(commonIupac) || parseEtherName(commonIupac) || parseDerivativeName(commonIupac) || parseAromaticIupacName(commonIupac) || parseAcyclicHaloalkaneName(commonIupac) || parseAcyclicIupacName(commonIupac))
-          : (parseHalobenzeneName(input) || parseCarboxylicAcidName(input) || parseAldehydeName(input) || parseKetoneName(input) || parseAmineName(input) || parseEtherName(input) || parseDerivativeName(input) || parseAromaticIupacName(input) || parseAcyclicHaloalkaneName(input) || parseAcyclicIupacName(input));
+          ? (parseHeterocyclicAromaticName(commonIupac) || parseOrthoMetaParaBenzeneName(commonIupac) || parseHalobenzeneName(commonIupac) || parseCarboxylicAcidName(commonIupac) || parseAldehydeName(commonIupac) || parseKetoneName(commonIupac) || parseAmineName(commonIupac) || parseEtherName(commonIupac) || parseDerivativeName(commonIupac) || parseAromaticIupacName(commonIupac) || parseAcyclicHaloalkaneName(commonIupac) || parseAcyclicIupacName(commonIupac))
+          : (parseHeterocyclicAromaticName(input) || parseOrthoMetaParaBenzeneName(input) || parseHalobenzeneName(input) || parseCarboxylicAcidName(input) || parseAldehydeName(input) || parseKetoneName(input) || parseAmineName(input) || parseEtherName(input) || parseDerivativeName(input) || parseAromaticIupacName(input) || parseAcyclicHaloalkaneName(input) || parseAcyclicIupacName(input));
         if (parsed) {
           if (commonIupac && !parsed.queryName) {
             parsed.queryName = String(input || "").trim();
