@@ -91,10 +91,10 @@
   };
 
   var BENZENE_SUBSTITUENT_GROUPS = {
-    fluoro: { code: "fluoro", size: 0, name: "fluoro", sortKey: "fluoro", label: "F", extraElements: {}, extraHydrogens: 0 },
-    chloro: { code: "chloro", size: 0, name: "chloro", sortKey: "chloro", label: "Cl", extraElements: {}, extraHydrogens: 0 },
-    bromo: { code: "bromo", size: 0, name: "bromo", sortKey: "bromo", label: "Br", extraElements: {}, extraHydrogens: 0 },
-    iodo: { code: "iodo", size: 0, name: "iodo", sortKey: "iodo", label: "I", extraElements: {}, extraHydrogens: 0 },
+    fluoro: { code: "fluoro", size: 0, name: "fluoro", sortKey: "fluoro", label: "F", extraElements: { F: 1 }, extraHydrogens: 0 },
+    chloro: { code: "chloro", size: 0, name: "chloro", sortKey: "chloro", label: "Cl", extraElements: { Cl: 1 }, extraHydrogens: 0 },
+    bromo: { code: "bromo", size: 0, name: "bromo", sortKey: "bromo", label: "Br", extraElements: { Br: 1 }, extraHydrogens: 0 },
+    iodo: { code: "iodo", size: 0, name: "iodo", sortKey: "iodo", label: "I", extraElements: { I: 1 }, extraHydrogens: 0 },
     hydroxy: { code: "hydroxy", size: 0, name: "hydroxy", sortKey: "hydroxy", label: "OH", extraElements: { O: 1 }, extraHydrogens: 1 },
     amino: { code: "amino", size: 0, name: "amino", sortKey: "amino", label: "NH\u2082", extraElements: { N: 1 }, extraHydrogens: 2 },
     carboxy: { code: "carboxy", size: 1, name: "carboxy", sortKey: "carboxy", label: "COOH", extraElements: { O: 2 }, extraHydrogens: 1 },
@@ -1541,7 +1541,7 @@
 
   function buildAromaticDiagramSvg(isomer, viewMode) {
     var isBondLine = viewMode === "bondline";
-    var center = { x: 170, y: 118 };
+    var center = { x: 190, y: 138 };
     var radius = 58;
     var substituentRadius = 108;
     var sequence = isomer.sequence || [null, null, null, null, null, null];
@@ -1565,7 +1565,7 @@
       (isBondLine ? "bondline" : "atom-view") +
       '" role="img" aria-label="' +
       (isBondLine ? "aromatic bond-line diagram" : "aromatic ring diagram") +
-      '" viewBox="20 0 300 236">'
+      '" viewBox="0 0 380 280">'
     ];
 
     for (var edge = 0; edge < 6; edge += 1) {
@@ -1573,33 +1573,75 @@
     }
     parts.push('<circle class="aromatic-circle" cx="' + center.x + '" cy="' + center.y + '" r="31"></circle>');
 
+    var allSvgPoints = [];
+    for (var pi = 0; pi < 6; pi += 1) { allSvgPoints.push(ring[pi]); }
+
     for (var atom = 0; atom < 6; atom += 1) {
       if (sequence[atom]) {
-        parts.push(bondLineMarkup(ring[atom], substituentPoints[atom], 1));
-        if (isBondLine) {
-          parts.push(
-            '<text class="bondline-substituent" x="' +
-            substituentPoints[atom].x +
-            '" y="' +
-            substituentPoints[atom].y +
-            '">' +
-            sequence[atom].label +
-            "</text>"
-          );
+        var subSize = sequence[atom].size || 0;
+        var isAlkylChain = subSize > 0 && !sequence[atom].extraElements;
+
+        if (isAlkylChain) {
+          // Draw zigzag carbon chain extending outward from ring
+          var dx = ring[atom].x - center.x;
+          var dy = ring[atom].y - center.y;
+          var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          var ux = dx / dist;
+          var uy = dy / dist;
+          var perpX = -uy;
+          var perpY = ux;
+
+          var prevPt = ring[atom];
+          var bondLen = isBondLine ? 28 : 32;
+          var zigzagAmt = isBondLine ? 8 : 12;
+
+          for (var ci = 0; ci < subSize; ci += 1) {
+            var zig = (ci % 2 === 0 ? 1 : -1) * zigzagAmt;
+            var nx = prevPt.x + ux * bondLen + perpX * zig;
+            var ny = prevPt.y + uy * bondLen + perpY * zig;
+
+            parts.push(bondLineMarkup(prevPt, { x: nx, y: ny }, 1));
+            allSvgPoints.push({ x: nx, y: ny });
+
+            if (!isBondLine) {
+              var chainLabel = ci === subSize - 1 ? "CH\u2083" : "CH\u2082";
+              parts.push(
+                '<g><circle class="atom" cx="' + nx + '" cy="' + ny + '" r="16"></circle>' +
+                '<text class="atom-label" x="' + nx + '" y="' + ny + '">' + chainLabel + "</text></g>"
+              );
+            }
+
+            prevPt = { x: nx, y: ny };
+          }
         } else {
-          parts.push(
-            '<g><circle class="atom substituent-atom" cx="' +
-            substituentPoints[atom].x +
-            '" cy="' +
-            substituentPoints[atom].y +
-            '" r="19"></circle><text class="atom-label" x="' +
-            substituentPoints[atom].x +
-            '" y="' +
-            substituentPoints[atom].y +
-            '">' +
-            sequence[atom].label +
-            "</text></g>"
-          );
+          // Draw single label for heteroatoms (F, Cl, Br, OH, NH2, etc.)
+          parts.push(bondLineMarkup(ring[atom], substituentPoints[atom], 1));
+          allSvgPoints.push(substituentPoints[atom]);
+          if (isBondLine) {
+            parts.push(
+              '<text class="bondline-substituent" x="' +
+              substituentPoints[atom].x +
+              '" y="' +
+              substituentPoints[atom].y +
+              '">' +
+              escapeHtml(sequence[atom].label) +
+              "</text>"
+            );
+          } else {
+            parts.push(
+              '<g><circle class="atom substituent-atom" cx="' +
+              substituentPoints[atom].x +
+              '" cy="' +
+              substituentPoints[atom].y +
+              '" r="19"></circle><text class="atom-label" x="' +
+              substituentPoints[atom].x +
+              '" y="' +
+              substituentPoints[atom].y +
+              '">' +
+              escapeHtml(sequence[atom].label) +
+              "</text></g>"
+            );
+          }
         }
       }
     }
@@ -2165,6 +2207,8 @@
     "allyl chloride": "3-chloroprop-1-ene",
     "benzyl chloride": "(chloromethyl)benzene",
     "benzyl bromide": "(bromomethyl)benzene",
+    "phenylmethanol": "benzenemethanol",
+    "vinylbenzene": "ethenylbenzene",
     "isopropyl alcohol": "propan-2-ol",
     "tert-butyl alcohol": "2-methylpropan-2-ol",
     "isobutyl alcohol": "2-methylpropan-1-ol",
@@ -2926,30 +2970,47 @@
   function parseOrthoMetaParaBenzeneName(input) {
     var original = String(input || "").trim();
     var name = normalizeName(original);
-    var ompMatch = name.match(/^(o|ortho|m|meta|p|para)-(.*?)(benzene)$/);
+    var ompMatch = name.match(/^(o|ortho|m|meta|p|para)-(.*?)benzene$/);
     if (!ompMatch) return null;
     var ompPrefix = ompMatch[1];
     var substituentPart = ompMatch[2];
     var secondLocant = ORTHO_META_PARA_MAP[ompPrefix];
     if (!secondLocant) return null;
-    var fullPrefix = "1-" + substituentPart + ",2-" + substituentPart;
+
     var singleSubName = substituentPart.replace(/di$/, "").replace(/tri$/, "").replace(/tetra$/, "");
     var multiplierMatch = substituentPart.match(/^(di|tri|tetra)/);
+
+    // Handle multiplier patterns like "o-dimethylbenzene"
     if (multiplierMatch && singleSubName && (ALKYL_LENGTHS[singleSubName] || BENZENE_SUBSTITUENT_GROUPS[singleSubName] || BRANCHED_SUBSTITUENT_INFO[singleSubName])) {
-      fullPrefix = "";
+      var fullPrefix = "";
       var count = MULTIPLIER_COUNTS[multiplierMatch[1]] || 2;
       for (var ci = 0; ci < count; ci += 1) {
         var loc = ci === 0 ? 1 : secondLocant;
         fullPrefix += (ci > 0 ? "-" : "") + loc + "-" + singleSubName;
       }
-    } else {
-      return null;
+      try {
+        return parseAromaticIupacName(original.replace(name, fullPrefix + "benzene"));
+      } catch (e) {
+        return null;
+      }
     }
-    try {
-      return parseAromaticIupacName(original.replace(name, fullPrefix + "benzene"));
-    } catch (e) {
-      return null;
+
+    // Try splitting compound substituent names (e.g., "chloromethyl" -> "chloro" + "methyl")
+    for (var hp in HALOGEN_BY_PREFIX) {
+      if (substituentPart.indexOf(hp) === 0 && substituentPart.length > hp.length) {
+        var remainder = substituentPart.slice(hp.length);
+        if (ALKYL_LENGTHS[remainder] || BRANCHED_SUBSTITUENT_INFO[remainder]) {
+          var splitPrefix = "1-" + hp + "-" + secondLocant + "-" + remainder;
+          try {
+            return parseAromaticIupacName(original.replace(name, splitPrefix + "benzene"));
+          } catch (e) {
+            return null;
+          }
+        }
+      }
     }
+
+    return null;
   }
 
   var HETEROCYCLIC_AROMATICS = {
@@ -3085,14 +3146,15 @@
       }
       occupied.add(sub.locant);
       sideCarbons += sub.length || 0;
-      sideHydrogens += (sub.length || 0) * 2 + 1;
+      if (BENZENE_SUBSTITUENT_GROUPS[sub.name]) {
+        sideHydrogens += sub.extraHydrogens || 0;
+      } else {
+        sideHydrogens += (sub.length || 0) * 2 + 1;
+      }
       if (sub.extraElements) {
         for (var el in sub.extraElements) {
           extraElements[el] = (extraElements[el] || 0) + sub.extraElements[el];
         }
-      }
-      if (sub.extraHydrogens) {
-        sideHydrogens += sub.extraHydrogens;
       }
       var subLabel = BENZENE_SUBSTITUENT_GROUPS[sub.name]
         ? BENZENE_SUBSTITUENT_GROUPS[sub.name].label
@@ -3726,6 +3788,81 @@
     };
   }
 
+  function convertAromaticBaseName(name) {
+    var baseMap = {
+      toluene: "methyl",
+      phenol: "hydroxy",
+      aniline: "amino",
+      benzoicacid: "carboxy",
+      benzaldehyde: "formyl"
+    };
+
+    for (var base in baseMap) {
+      if (name.endsWith(base)) {
+        var prefix = name.slice(0, -base.length);
+        var baseSub = baseMap[base];
+
+        if (!prefix) {
+          return baseSub + "benzene";
+        }
+
+        prefix = prefix.replace(/-$/, "");
+
+        var ompSubMatch = prefix.match(/^(o|ortho|m|meta|p|para)-(.+)$/);
+        if (ompSubMatch) {
+          var loc = ORTHO_META_PARA_MAP[ompSubMatch[1]];
+          var subPart = ompSubMatch[2];
+          if (subPart && (ALKYL_LENGTHS[subPart] || BENZENE_SUBSTITUENT_GROUPS[subPart] || BRANCHED_SUBSTITUENT_INFO[subPart] || HALOGEN_BY_PREFIX[subPart])) {
+            return "1-" + baseSub + "-" + loc + "-" + subPart + "benzene";
+          }
+          for (var hp in HALOGEN_BY_PREFIX) {
+            if (subPart.indexOf(hp) === 0 && subPart.length > hp.length) {
+              var remainder = subPart.slice(hp.length);
+              if (ALKYL_LENGTHS[remainder] || BRANCHED_SUBSTITUENT_INFO[remainder]) {
+                return "1-" + hp + "-" + loc + "-" + remainder + "-" + baseSub + "benzene";
+              }
+            }
+          }
+          return null;
+        }
+
+        var subParts = [];
+        var remaining = prefix;
+        while (remaining.length) {
+          var subMatch = remaining.match(/^(\d+(?:,\d+)*)-((?:di|tri|tetra)?(?:fluoro|chloro|bromo|iodo|hydroxy|amino|methyl|ethyl|propyl|butyl|pentyl|hexyl|heptyl|octyl|nonyl|decyl|nitro|methoxy))/);
+          if (!subMatch) {
+            return null;
+          }
+          subParts.push(subMatch[0]);
+          remaining = remaining.slice(subMatch[0].length);
+          if (remaining[0] === "-") {
+            remaining = remaining.slice(1);
+          }
+        }
+
+        if (subParts.length) {
+          return "1-" + baseSub + "-" + subParts.join("-") + "benzene";
+        }
+
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  function parseConvertedAromaticBaseName(input) {
+    var original = String(input || "").trim();
+    var name = normalizeName(original);
+    var converted = convertAromaticBaseName(name);
+    if (!converted) return null;
+    var result = parseAromaticIupacName(converted);
+    if (result) {
+      result.queryName = original;
+    }
+    return result;
+  }
+
   var COMMON_COMPOUND_ALIASES_NORM = null;
 
   function resolveCommonAlias(name) {
@@ -3768,8 +3905,8 @@
       var commonIupac = resolveCommonAlias(name);
       try {
         var parsed = commonIupac
-          ? (parseHeterocyclicAromaticName(commonIupac) || parseOrthoMetaParaBenzeneName(commonIupac) || parseHalobenzeneName(commonIupac) || parseCarboxylicAcidName(commonIupac) || parseAldehydeName(commonIupac) || parseKetoneName(commonIupac) || parseAmineName(commonIupac) || parseEtherName(commonIupac) || parseDerivativeName(commonIupac) || parseAromaticIupacName(commonIupac) || parseAcyclicHaloalkaneName(commonIupac) || parseAcyclicIupacName(commonIupac))
-          : (parseHeterocyclicAromaticName(input) || parseOrthoMetaParaBenzeneName(input) || parseHalobenzeneName(input) || parseCarboxylicAcidName(input) || parseAldehydeName(input) || parseKetoneName(input) || parseAmineName(input) || parseEtherName(input) || parseDerivativeName(input) || parseAromaticIupacName(input) || parseAcyclicHaloalkaneName(input) || parseAcyclicIupacName(input));
+          ? (parseHeterocyclicAromaticName(commonIupac) || parseOrthoMetaParaBenzeneName(commonIupac) || parseConvertedAromaticBaseName(commonIupac) || parseHalobenzeneName(commonIupac) || parseCarboxylicAcidName(commonIupac) || parseAldehydeName(commonIupac) || parseKetoneName(commonIupac) || parseAmineName(commonIupac) || parseEtherName(commonIupac) || parseDerivativeName(commonIupac) || parseAromaticIupacName(commonIupac) || parseAcyclicHaloalkaneName(commonIupac) || parseAcyclicIupacName(commonIupac) || parseHeterocyclicAromaticName(input) || parseOrthoMetaParaBenzeneName(input) || parseConvertedAromaticBaseName(input) || parseHalobenzeneName(input) || parseAromaticIupacName(input))
+          : (parseHeterocyclicAromaticName(input) || parseOrthoMetaParaBenzeneName(input) || parseConvertedAromaticBaseName(input) || parseHalobenzeneName(input) || parseCarboxylicAcidName(input) || parseAldehydeName(input) || parseKetoneName(input) || parseAmineName(input) || parseEtherName(input) || parseDerivativeName(input) || parseAromaticIupacName(input) || parseAcyclicHaloalkaneName(input) || parseAcyclicIupacName(input));
         if (parsed) {
           if (commonIupac && !parsed.queryName) {
             parsed.queryName = String(input || "").trim();
@@ -3889,7 +4026,8 @@
       }
       for (var s = 0; s < sequence.length; s += 1) {
         var sub = sequence[s];
-        if (!sub || !sub.carbonCount) {
+        var subCarbonCount = sub ? (sub.carbonCount || sub.size || 0) : 0;
+        if (!sub || !subCarbonCount) {
           continue;
         }
         var base = atoms[ringIndexes[s]];
@@ -3898,7 +4036,7 @@
         outward.x /= length;
         outward.y /= length;
         var previous = ringIndexes[s];
-        for (var sc = 0; sc < sub.carbonCount; sc += 1) {
+        for (var sc = 0; sc < subCarbonCount; sc += 1) {
           var next = addAtom("C", base.x + outward.x * (1.05 + sc * 1.15), base.y + outward.y * (1.05 + sc * 1.15), sc % 2 ? 0.28 : -0.18, "C");
           addBond(previous, next, 1);
           previous = next;
@@ -4625,7 +4763,7 @@
     var selectedMode = params.get("family") || "auto";
     var requestedView = params.get("view");
     var displayMode = requestedView === "bondline" || requestedView === "3d" ? requestedView : "atom";
-    var selectedTheme = params.get("theme") || readStoredSetting(themeStorageKey, "light");
+    var selectedTheme = "dark";
     var initialQuery = params.get("q") || params.get("query") || "";
     var currentAnalysis = null;
     var tourStorageKey = "hydrocarbon-isomer-tour-seen";
@@ -4659,7 +4797,7 @@
     }
 
     function setMode(mode) {
-      selectedMode = mode || "auto";
+      selectedMode = "auto";
       for (var i = 0; i < modeButtons.length; i += 1) {
         modeButtons[i].classList.toggle("active", modeButtons[i].getAttribute("data-mode") === selectedMode);
       }
@@ -4679,10 +4817,9 @@
     }
 
     function setTheme(theme) {
-      selectedTheme = isValidChoice(theme || "light", ["light", "dark", "system"], "light");
-      var useDark = selectedTheme === "dark" || (selectedTheme === "system" && systemPrefersDark());
-      document.body.classList.toggle("theme-dark", useDark);
-      document.body.classList.toggle("theme-light", !useDark);
+      selectedTheme = "dark";
+      document.body.classList.toggle("theme-dark", true);
+      document.body.classList.toggle("theme-light", false);
       if (themeSelect) {
         themeSelect.value = selectedTheme;
       }

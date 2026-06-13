@@ -51,45 +51,16 @@
             <div class="suggestions-dropdown" data-suggestions-dropdown hidden></div>
           </form>
 
-          <details class="settings-drawer" open>
-            <summary>Options</summary>
-            <div class="settings-grid">
-              <label class="select-control" for="family-select">
-                <span>Family</span>
-                <select id="family-select" data-mode-select>
-                  <option value="auto">Auto</option>
-                  <option value="alkane">Alkane</option>
-                  <option value="alkene">Alkene</option>
-                  <option value="alkyne">Alkyne</option>
-                  <option value="aromatic">Aromatic</option>
-                  <option value="haloalkane">Haloalkane</option>
-                  <option value="alcohol">Alcohol</option>
-                  <option value="ester">Ester</option>
-                  <option value="ether">Ether</option>
-                  <option value="carboxylic acid">Carboxylic Acid</option>
-                  <option value="aldehyde">Aldehyde</option>
-                  <option value="ketone">Ketone</option>
-                  <option value="amine">Amine</option>
-                </select>
-              </label>
-              <label class="select-control" for="view-select">
-                <span>View</span>
-                <select id="view-select" data-view-select>
-                  <option value="atom" selected>Atom labels</option>
-                  <option value="bondline">Bond-line</option>
-                  <option value="3d">3D</option>
-                </select>
-              </label>
-              <label class="select-control" for="theme-select">
-                <span>Theme</span>
-                <select id="theme-select" data-theme-select>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                  <option value="system">System</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <div class="settings-grid">
+            <label class="select-control" for="view-select">
+              <span>View</span>
+              <select id="view-select" data-view-select>
+                <option value="atom" selected>Atom labels</option>
+                <option value="bondline">Bond-line</option>
+                <option value="3d">3D</option>
+              </select>
+            </label>
+          </div>
 
           <div class="examples" aria-label="Quick examples">
             <button type="button" data-example="C5H12" data-example-mode="alkane">C5H12</button>
