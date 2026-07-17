@@ -25,6 +25,8 @@
     </div>
 
     <main class="app-shell">
+      <!-- Page 1: Search / Input -->
+      <section class="page page-search" data-page="search" aria-label="Search page">
       <section class="workspace">
         <div class="control-panel">
           <div class="hero-heading">
@@ -71,6 +73,18 @@
             <button type="button" class="surprise-btn" data-example="surprise" data-example-mode="auto">&#x2728; Surprise me</button>
           </div>
 
+          <div class="engagement-row">
+            <span class="streak-badge" data-streak-badge title="Unique compounds explored today">
+              <span aria-hidden="true">&#x1F525;</span>
+              <span data-exploration-count>0</span>
+              <span>explored today</span>
+            </span>
+            <span class="daily-formula" data-daily-formula title="Formula of the day">
+              <span aria-hidden="true">&#x1F4C5;</span>
+              <span data-daily-label></span>
+            </span>
+          </div>
+
           <footer class="creator">
             <span>Made by Kidus Sofonias</span>
             <a href="https://github.com/Kidus-Sofonias" target="_blank" rel="noreferrer">GitHub</a>
@@ -79,11 +93,33 @@
 
         <aside class="result-panel" data-summary aria-live="polite"></aside>
       </section>
+      </section>
+      <!-- /search page -->
 
+      <!-- Page 2: Results -->
+      <section class="page page-results" data-page="results" aria-label="Results page" hidden>
       <section class="results-section" data-results-section>
         <div class="section-heading">
           <h2 data-results-title>Isomers</h2>
           <p data-count-label></p>
+        </div>
+        <div class="section-toolbar">
+          <button type="button" class="toolbar-btn" data-flashcard-toggle title="Toggle flashcard mode">
+            <span aria-hidden="true">&#x1F4AD;</span>
+            <span>Flashcards</span>
+          </button>
+          <button type="button" class="toolbar-btn" data-prediction-toggle title="Guess the count before looking">
+            <span aria-hidden="true">&#x1F3AF;</span>
+            <span>Guess count</span>
+          </button>
+        </div>
+        <div class="prediction-bar" data-prediction-bar hidden>
+          <label for="guess-input">How many isomers do you think this formula has?</label>
+          <div class="prediction-row">
+            <input type="number" id="guess-input" data-guess-input min="1" max="999" placeholder="Enter your guess">
+            <button type="button" data-guess-submit>Submit</button>
+          </div>
+          <p class="prediction-result" data-prediction-result hidden></p>
         </div>
         <div class="analysis-progress" data-analysis-progress hidden>
           <span></span>
@@ -91,12 +127,26 @@
         </div>
         <div class="isomer-grid" data-results></div>
       </section>
+      </section>
+      <!-- /results page -->
     </main>
+
+    <!-- Bottom tab navigation (mobile) -->
+    <nav class="bottom-nav" data-bottom-nav aria-label="Page navigation">
+      <button type="button" class="bottom-nav-btn active" data-nav-page="search" aria-label="Search">
+        <span aria-hidden="true">&#x1F50D;</span>
+        <span>Search</span>
+      </button>
+      <button type="button" class="bottom-nav-btn" data-nav-page="results" aria-label="Results">
+        <span aria-hidden="true">&#x1F4CA;</span>
+        <span>Results</span>
+      </button>
+    </nav>
 
     <template id="empty-state-template">
       <div class="empty-state">
-        <h3>Ready when you are</h3>
-        <p>Enter a formula like C5H12 or a name like isobutane, acetone, or toluene.</p>
+        <h3 data-empty-heading>Ready when you are</h3>
+        <p data-empty-message>Enter a formula like C5H12 or a name like isobutane, acetone, or toluene.</p>
       </div>
     </template>
 
@@ -125,6 +175,15 @@
         <p data-popup-message></p>
         <div class="popup-hints" data-popup-hints></div>
       </section>
+    </div>
+
+    <div class="celebration-overlay" data-celebration hidden>
+      <div class="celebration-content">
+        <h2>&#x1F389; All explored!</h2>
+        <p>You&#x2019;ve opened every isomer card for this formula.</p>
+        <button type="button" data-celebration-close>Continue</button>
+      </div>
+      <div class="confetti-container" data-confetti-container></div>
     </div>
 
     <div class="share-sheet" data-share-sheet hidden>
@@ -171,22 +230,37 @@
       <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
         <div class="tour-copy">
           <p class="eyebrow">How to use</p>
-          <h2 id="tour-title">Find structures in 3 steps</h2>
+          <h2 id="tour-title">Explore isomers in style</h2>
           <div class="tour-step-list">
             <article>
               <span>1</span>
-              <strong>Enter a formula or name</strong>
-              <p>Try C5H12, isobutane, acetone, or toluene.</p>
+              <strong>Search for compounds</strong>
+              <p>Enter a formula like C5H12 or a name like isobutane, toluene, or acetone.</p>
             </article>
             <article>
               <span>2</span>
-              <strong>Tap Go</strong>
-              <p>The explorer finds matching isomers.</p>
+              <strong>Browse the results</strong>
+              <p>Cards show each isomer with its IUPAC name, formula, and structure diagram. Switch between pages using the bottom tabs.</p>
             </article>
             <article>
               <span>3</span>
-              <strong>Inspect the cards</strong>
-              <p>Open for a larger view or switch to bond-line mode.</p>
+              <strong>Flip & learn with Flashcards</strong>
+              <p>Toggle flashcard mode to test yourself &mdash; tap a card to flip between the name and the structure diagram.</p>
+            </article>
+            <article>
+              <span>4</span>
+              <strong>Guess before you see</strong>
+              <p>Use the &ldquo;Guess count&rdquo; tool to predict how many isomers exist for a formula before the cards appear.</p>
+            </article>
+            <article>
+              <span>5</span>
+              <strong>Daily formula & streak</strong>
+              <p>Check the formula of the day and track how many unique compounds you explore each day.</p>
+            </article>
+            <article>
+              <span>6</span>
+              <strong>Open for a closer look</strong>
+              <p>Tap &ldquo;Open&rdquo; on any card for a full-screen view with atom labels, bond-line, or interactive 3D modes.</p>
             </article>
           </div>
           <div class="tour-actions">
@@ -196,7 +270,9 @@
       </section>
     </div>
 
+    <script src="vendor/three.min.js"></script>
     <script src="vendor/qrcode.js"></script>
+    <script src="molecule-viewer-3d.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

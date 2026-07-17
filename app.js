@@ -29,6 +29,11 @@
       description: "Acyclic monoalkynes with one carbon-carbon triple bond.",
       pattern: "CnH2n-2"
     },
+    cycloalkane: {
+      label: "Cycloalkane",
+      description: "Saturated monocyclic hydrocarbons with only single carbon-carbon bonds.",
+      pattern: "CnH2n"
+    },
     aromatic: {
       label: "Aromatic",
       description: "Single benzene-ring alkyl aromatics. Positional isomers around the ring are counted.",
@@ -684,6 +689,54 @@
     var edgeOrders = new Map();
     edgeOrders.set(edgeKey(a, b), bondOrder);
     return weightedValence(adjacency, a, edgeOrders) <= 4 && weightedValence(adjacency, b, edgeOrders) <= 4;
+  }
+
+  function generateCycloalkaneIsomers(carbonCount) {
+    if (!Number.isInteger(carbonCount) || carbonCount < 2 || carbonCount > MAX_CARBONS) {
+      throw new Error("Carbon count must be between 2 and " + MAX_CARBONS + ".");
+    }
+
+    var seen = new Map();
+    var skeletons = generateAlkaneIsomers(carbonCount);
+    for (var i = 0; i < skeletons.length; i += 1) {
+      var adjacency = skeletons[i].adjacency;
+      var n = adjacency.length;
+      
+      // Try to form a ring by connecting each pair of non-adjacent atoms
+      for (var a = 0; a < n; a += 1) {
+        for (var b = a + 1; b < n; b += 1) {
+          // Check if a and b are already directly bonded
+          var alreadyBonded = false;
+          for (var k = 0; k < adjacency[a].length; k += 1) {
+            if (adjacency[a][k] === b) {
+              alreadyBonded = true;
+              break;
+            }
+          }
+          if (alreadyBonded) continue;
+          
+          // Check if both atoms can accept an additional bond (valence <= 4)
+          if (adjacency[a].length >= 4 || adjacency[b].length >= 4) continue;
+          
+          // Create ring by adding a bond between a and b
+          var edgeOrders = new Map();
+          edgeOrders.set(edgeKey(a, b), 1);
+          var canonical = freeCanonicalWeighted(adjacency, edgeOrders);
+          
+          if (!seen.has(canonical)) {
+            seen.set(canonical, {
+              canonical: canonical,
+              adjacency: adjacency,
+              edgeOrders: edgeOrders,
+              ringBond: [a, b],
+              bondOrder: 1
+            });
+          }
+        }
+      }
+    }
+
+    return Array.from(seen.values());
   }
 
   function generateUnsaturatedAcyclicIsomers(carbonCount, bondOrder) {
@@ -1539,6 +1592,44 @@
     );
   }
 
+  function buildCycloalkaneDiagramSvg(isomer, viewMode) {
+    var isBondLine = viewMode === "bondline";
+    var adjacency = isomer.adjacency || [[]];
+    var edgeOrders = isomer.edgeOrders || null;
+    var n = adjacency.length;
+
+    var centerX = 200, centerY = 138;
+    var radius = n <= 3 ? 55 : n <= 6 ? 65 : 58;
+    var ringPoints = [];
+    for (var i = 0; i < n; i += 1) {
+      var angle = (-90 + i * (360 / n)) * Math.PI / 180;
+      ringPoints.push({ x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius });
+    }
+
+    var width = n <= 3 ? 280 : n <= 6 ? 340 : 320;
+    var height = n <= 3 ? 240 : n <= 6 ? 300 : 280;
+
+    var parts = ['<svg class="' + (isBondLine ? "bondline" : "atom-view") + '" role="img" aria-label="cycloalkane ring diagram" viewBox="0 0 ' + width + ' ' + height + '">'];
+    for (var b = 0; b < n; b += 1) {
+      var next = (b + 1) % n;
+      var order = 1;
+      if (edgeOrders) {
+        var key = (b < next ? b + "-" + next : next + "-" + b);
+        order = edgeOrders.get(key) || 1;
+      }
+      parts.push(bondLineMarkup(ringPoints[b], ringPoints[next], order));
+    }
+    if (!isBondLine) {
+      for (var atom = 0; atom < n; atom += 1) {
+        var hydrogens = 4 - weightedValence(adjacency, atom, edgeOrders) - attachmentCountForAtom(isomer.attachments, atom);
+        var label = hydrogens <= 0 ? "C" : hydrogens === 1 ? "CH" : "CH" + hydrogens;
+        parts.push('<g><circle class="atom" cx="' + ringPoints[atom].x + '" cy="' + ringPoints[atom].y + '" r="22"></circle><text class="atom-label" x="' + ringPoints[atom].x + '" y="' + ringPoints[atom].y + '">' + label + "</text></g>");
+      }
+    }
+    parts.push("</svg>");
+    return parts.join("");
+  }
+
   function buildAromaticDiagramSvg(isomer, viewMode) {
     var isBondLine = viewMode === "bondline";
     var center = { x: 190, y: 138 };
@@ -1678,6 +1769,9 @@
     if (family === "alkyne") {
       return carbon * 2 - 2;
     }
+    if (family === "cycloalkane") {
+      return carbon * 2;
+    }
     if (family === "aromatic") {
       return carbon * 2 - 6;
     }
@@ -1703,7 +1797,7 @@
     if (family === "alkane") {
       return 1;
     }
-    if (family === "alkene" || family === "alkyne") {
+    if (family === "alkene" || family === "alkyne" || family === "cycloalkane") {
       return 2;
     }
     if (family === "aromatic") {
@@ -1784,6 +1878,9 @@
     }
     if (parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkane")) {
       return "alkane";
+    }
+    if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkane")) {
+      return "cycloalkane";
     }
     if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkene")) {
       return "alkene";
@@ -2018,6 +2115,21 @@
           }
         }
       }
+    } else if (family === "cycloalkane") {
+      isomers = generateCycloalkaneIsomers(parsed.carbon).map(function (isomer) {
+        var naming = nameAlkane(isomer.adjacency);
+        return {
+          family: family,
+          canonical: isomer.canonical,
+          adjacency: isomer.adjacency,
+          edgeOrders: isomer.edgeOrders,
+          ringBond: isomer.ringBond,
+          name: "cyclo" + naming.name,
+          commonNames: [],
+          chain: naming.chain,
+          substituents: naming.substituents
+        };
+      });
     } else if (family === "aromatic") {
       isomers = generateAromaticIsomers(parsed.carbon).map(function (isomer) {
         return {
@@ -3214,7 +3326,7 @@
       loose: new Map(),
       entries: []
     };
-    var families = ["alkane", "alkene", "alkyne", "aromatic"];
+    var families = ["alkane", "alkene", "alkyne", "cycloalkane", "aromatic"];
 
     for (var f = 0; f < families.length; f += 1) {
       var family = families[f];
@@ -4136,17 +4248,16 @@
     if (compact) {
       return (
         '<div class="molecule-3d-card">' +
-        '<span>Open for interactive 3D</span>' +
+        '<span>Interactive 3D</span>' +
         '<i></i><i></i><i></i>' +
         "</div>"
       );
     }
+    var modelData = JSON.stringify(molecule3DModel(isomer));
     return (
-      '<div class="molecule-3d" data-molecule-model="' +
-      encodeURIComponent(JSON.stringify(molecule3DModel(isomer))) +
-      '">' +
-      '<span>Loading 3D view...</span>' +
-      "</div>"
+      '<div class="mol-viewer-3d" data-molecule-model="' +
+      encodeURIComponent(modelData) +
+      '" style="width:100%;height:100%;min-height:320px"></div>'
     );
   }
 
@@ -4250,6 +4361,9 @@
   function renderIsomerDiagram(isomer, displayMode, context) {
     if (displayMode === "3d") {
       return molecule3DMarkup(isomer, context !== "viewer");
+    }
+    if (isomer.family === "cycloalkane") {
+      return buildCycloalkaneDiagramSvg(isomer, displayMode);
     }
     return isomer.family === "aromatic"
       ? buildAromaticDiagramSvg(isomer, displayMode)
@@ -4766,6 +4880,7 @@
     var selectedTheme = "dark";
     var initialQuery = params.get("q") || params.get("query") || "";
     var currentAnalysis = null;
+    var currentViewer3D = null;
     var tourStorageKey = "hydrocarbon-isomer-tour-seen";
     var recentStorageKey = "hydrocarbon-recent-inputs";
     var analyzeTimer = null;
@@ -5214,7 +5329,24 @@
         (displayMode === "bondline" ? "Bond-line view" : displayMode === "3d" ? "Interactive 3D view" : "Atom-label view");
       viewer.hidden = false;
       viewerDiagram.innerHTML = renderIsomerDiagram(isomer, displayMode, "viewer");
-      render3DCanvases(viewerDiagram);
+      // Initialise 3D viewer if 3D mode is active
+            if (displayMode === "3d") {
+              var viewerContainer = viewerDiagram.querySelector('.mol-viewer-3d');
+              if (viewerContainer && typeof MoleculeViewer3D !== 'undefined') {
+                var modelDataAttr = viewerContainer.getAttribute('data-molecule-model');
+                if (modelDataAttr) {
+                  try {
+                    var model = JSON.parse(decodeURIComponent(modelDataAttr));
+                    var v3d = new MoleculeViewer3D();
+                    v3d.init(viewerContainer);
+                    v3d.loadModel(model);
+                    currentViewer3D = v3d;
+                  } catch (e) {
+                    console.warn('3D viewer init failed:', e);
+                  }
+                }
+              }
+            }
     }
 
     function closeCompoundViewer() {
@@ -5639,6 +5771,7 @@
     generateAromaticIsomers: generateAromaticIsomers,
     nameAlkane: nameAlkane,
     nameUnsaturatedAcyclic: nameUnsaturatedAcyclic,
+    molecule3DMarkup: molecule3DMarkup,
     molecule3DModel: molecule3DModel,
     buildDiagramSvg: buildDiagramSvg
   };

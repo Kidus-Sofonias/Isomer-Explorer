@@ -606,7 +606,7 @@ h1 { margin: 0; font-size: 1.3rem; line-height: 1.25; }
 
 .viewer-diagram svg { width: 100%; height: 100%; display: block; }
 
-.molecule-3d, .molecule-3d-card {
+.molecule-3d-card {
   width: 100%; height: 100%;
   display: grid; place-items: center;
   position: relative;
@@ -616,7 +616,7 @@ h1 { margin: 0; font-size: 1.3rem; line-height: 1.25; }
   background: radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--teal) 18%, transparent), transparent 35%), var(--panel);
 }
 
-.molecule-3d span, .molecule-3d-card span {
+.molecule-3d-card span {
   position: relative; z-index: 2;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -624,6 +624,23 @@ h1 { margin: 0; font-size: 1.3rem; line-height: 1.25; }
   color: var(--teal-dark);
   background: var(--panel);
   font-weight: 900;
+}
+
+.mol-viewer-3d {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  display: block;
+  position: relative;
+  background: radial-gradient(ellipse at 50% 45%, #141c28 0%, #0b0e1a 100%);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.mol-viewer-3d canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* --- Popup / Share / Install --- */
@@ -997,8 +1014,330 @@ h1 { margin: 0; font-size: 1.3rem; line-height: 1.25; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* --- Desktop --- */
+/* --- Engagement row --- */
+.engagement-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.streak-badge,
+.daily-formula {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: var(--chip);
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: default;
+}
+
+.streak-badge [data-exploration-count] {
+  color: var(--amber);
+  font-size: 0.95rem;
+}
+
+/* --- Section toolbar --- */
+.section-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-btn {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--soft-strong);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 800;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+
+.toolbar-btn:hover {
+  border-color: var(--teal);
+  background: var(--chip-hover);
+  color: var(--ink);
+}
+
+.toolbar-btn.active {
+  color: #fff;
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
+/* --- Prediction bar --- */
+.prediction-bar {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
+.prediction-bar[hidden] { display: none; }
+
+.prediction-bar label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.prediction-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.prediction-row input {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--field);
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.prediction-row input:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(15,118,110,0.12);
+}
+
+.prediction-row button {
+  min-height: 42px;
+  min-width: 72px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #fff;
+  background: var(--teal);
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.9rem;
+  transition: background 150ms;
+}
+
+.prediction-row button:hover { background: var(--teal-dark); }
+
+.prediction-result {
+  margin: 10px 0 0;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.prediction-result[hidden] { display: none; }
+
+.prediction-result.correct {
+  color: var(--teal-dark);
+}
+
+.prediction-result.wrong {
+  color: var(--clay);
+}
+
+/* --- Flashcard styles --- */
+.isomer-grid.flashcard-mode .isomer-card header,
+.isomer-grid.flashcard-mode .isomer-card .card-actions,
+.isomer-grid.flashcard-mode .isomer-card .formula-line,
+.isomer-grid.flashcard-mode .isomer-card .common-name-line,
+.isomer-grid.flashcard-mode .isomer-card .cis-trans-toggle {
+  display: none;
+}
+
+.isomer-grid.flashcard-mode .isomer-card {
+  cursor: pointer;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.isomer-grid.flashcard-mode .isomer-card .diagram {
+  border-top: none;
+  height: auto;
+  min-height: 200px;
+  width: 100%;
+}
+
+.isomer-grid.flashcard-mode .isomer-card .flashcard-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  width: 100%;
+}
+
+.isomer-grid.flashcard-mode .isomer-card .flashcard-face h3 {
+  font-size: 1.1rem;
+  margin-bottom: 6px;
+}
+
+.isomer-grid.flashcard-mode .isomer-card .flashcard-face p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.isomer-grid.flashcard-mode .isomer-card.flipped .flashcard-face.hide-on-flip {
+  display: none;
+}
+
+.isomer-grid.flashcard-mode .isomer-card .diagram.hide-on-flip {
+  display: none;
+}
+
+/* --- Celebration overlay --- */
+.celebration-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--overlay);
+}
+
+.celebration-overlay[hidden] { display: none; }
+
+.celebration-content {
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 24px 20px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+  animation: slide-up 320ms ease-out both;
+  max-width: 360px;
+  z-index: 2;
+}
+
+.celebration-content h2 {
+  margin: 0 0 6px;
+  font-size: 1.5rem;
+}
+
+.celebration-content p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.celebration-content button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 20px;
+  color: #fff;
+  background: var(--teal);
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 0.95rem;
+}
+
+.confetti-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: -10px;
+  animation: confetti-fall linear forwards;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* --- Bottom nav --- */
+.bottom-nav {
+  display: flex;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.08);
+  padding: 0 env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav-btn {
+  flex: 1;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 800;
+  transition: color 120ms, background 120ms;
+}
+
+.bottom-nav-btn:hover { color: var(--ink); background: var(--soft); }
+.bottom-nav-btn.active { color: var(--teal); }
+
+.bottom-nav-btn span:first-child { font-size: 1.2rem; }
+
+/* --- Pages (multipage layout) --- */
+.page { display: block; }
+.page[hidden] { display: none; }
+
+/* Mobile: hide bottom-nav content on desktop, show on mobile */
+@media (min-width: 761px) {
+  .bottom-nav { display: none; }
+  .app-shell { padding-bottom: 24px; }
+}
+
+@media (max-width: 760px) {
+  body { padding-bottom: 68px; }
+  .app-shell { padding-bottom: 0; }
+  .page.page-results { padding-bottom: 12px; }
+  .result-panel { min-height: 80px; }
+}
+
+/* --- Desktop layout (unchanged, just overrides page behavior) --- */
 @media (min-width: 760px) {
+  .page,
+  .page[hidden] {
+    display: block !important;
+  }
   .app-shell { padding: 32px 0 48px; }
 
   .workspace {
