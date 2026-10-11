@@ -13,113 +13,175 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body class="surface-glass">
-    <div class="app-actions" aria-label="App actions">
-      <button type="button" class="app-action" data-share-open aria-label="Share">
-        <span aria-hidden="true">&#x2197;</span>
-        <span>Share</span>
-      </button>
-      <button type="button" class="app-action" data-install-app aria-label="Install" hidden>
-        <span aria-hidden="true">&#x2B07;</span>
-        <span>Install</span>
-      </button>
-    </div>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="topbar-brand" href="#search-workspace" aria-label="Isomer Explorer home">
+          <img src="assets/liquid-logo.svg" alt="" width="22" height="22">
+          <span>Isomer Explorer</span>
+        </a>
+        <div class="topbar-actions" aria-label="App actions">
+          <button type="button" class="icon-btn" data-share-open aria-label="Share" title="Share">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 13.3l7.4 4.4M15.7 6.3L8.3 10.7"/></svg>
+            <span>Share</span>
+          </button>
+          <button type="button" class="icon-btn" data-install-app aria-label="Install app" title="Install" hidden>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            <span>Install</span>
+          </button>
+          <button type="button" class="icon-btn" data-tour-open aria-label="How to use" title="How to use">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a3 3 0 0 1 5.8 1c0 2-2.6 2.6-2.6 4"/><path d="M12 17.4h.01"/></svg>
+            <span>Help</span>
+          </button>
+        </div>
+      </div>
+    </header>
 
     <main class="app-shell">
       <!-- Page 1: Search / Input -->
-      <section class="page page-search" data-page="search" aria-label="Search page">
-      <section class="workspace">
+      <section class="workspace" id="search-workspace" aria-label="Search page">
         <div class="control-panel">
           <div class="hero-heading">
-            <img class="brand-logo" src="assets/liquid-logo.svg" alt="" width="48" height="48">
-            <div>
-              <p class="eyebrow">Isomer Explorer</p>
-              <h1>Find structures from a formula or name.</h1>
-            </div>
+            <img class="brand-logo" src="assets/liquid-logo.svg" alt="" width="64" height="64">
+            <p class="eyebrow">Isomer Explorer</p>
+            <h1>Search any compound</h1>
+            <p class="hero-sub">Formula or name &mdash; try methane, isobutane, ethanol, or toluene&hellip;</p>
           </div>
 
           <form class="formula-form" data-formula-form autocomplete="off">
-            <label for="formula-input">Formula or name</label>
-            <div class="input-row">
+            <label class="sr-only" for="formula-input">Formula or name</label>
+            <div class="composer">
+              <span class="composer-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+              </span>
               <input
                 id="formula-input"
                 data-formula-input
                 type="text"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="C5H12, isobutane, acetone..."
+                placeholder="Search any formula or name&hellip;"
               >
-              <button type="submit">Go</button>
+              <button type="submit" class="submit-btn" aria-label="Search" title="Search">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+              </button>
             </div>
-            <div class="suggestions-dropdown" data-suggestions-dropdown hidden></div>
+            <div class="dropdown suggestions-dropdown" data-suggestions-dropdown hidden></div>
+            <div class="dropdown history-dropdown" data-recent-list aria-label="Recent searches" hidden></div>
           </form>
 
+          <section class="examples-carousel" aria-labelledby="examples-title">
+            <div class="examples-heading">
+              <div>
+                <p class="examples-kicker">A quick start</p>
+                <h2 id="examples-title">Explore an example</h2>
+              </div>
+              <div class="examples-controls">
+                <span class="examples-status" data-examples-status aria-live="polite"></span>
+                <button type="button" class="carousel-nav" data-examples-scroll="prev" aria-label="Previous examples" disabled>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <button type="button" class="carousel-nav" data-examples-scroll="next" aria-label="Next examples">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="examples-track" data-examples-track tabindex="0" aria-label="Compound examples">
+              <button type="button" class="example-card" data-example="2,2,3,3-tetramethylbutane" data-example-mode="alkane" data-example-family="Alkane"><span class="example-formula">C<sub>8</sub>H<sub>18</sub></span><span class="example-name">Highly branched octane</span><span class="example-iupac">IUPAC · 2,2,3,3-tetramethylbutane</span><span class="example-family">Branched alkane</span></button>
+              <button type="button" class="example-card" data-example="C8H18" data-example-mode="alkane" data-example-family="Alkane"><span class="example-formula">C<sub>8</sub>H<sub>18</sub></span><span class="example-name">Octane isomers</span><span class="example-iupac">IUPAC · 18 constitutional isomers</span><span class="example-family">Alkane</span></button>
+              <button type="button" class="example-card" data-example="2,3-dimethylhexa-1,3-diene" data-example-mode="diene" data-example-family="Diene"><span class="example-formula">C<sub>8</sub>H<sub>14</sub></span><span class="example-name">Branched conjugated diene</span><span class="example-iupac">IUPAC · 2,3-dimethylhexa-1,3-diene</span><span class="example-family">Diene</span></button>
+              <button type="button" class="example-card" data-example="C8H14" data-example-mode="diene" data-example-family="Diene"><span class="example-formula">C<sub>8</sub>H<sub>14</sub></span><span class="example-name">Octadiene isomers</span><span class="example-iupac">IUPAC · branched and positional diene isomers</span><span class="example-family">Diene</span></button>
+              <button type="button" class="example-card" data-example="1,2,3,3-tetramethylcyclobut-1-ene" data-example-mode="cycloalkene" data-example-family="Cycloalkene"><span class="example-formula">C<sub>8</sub>H<sub>14</sub></span><span class="example-name">Highly substituted cycloalkene</span><span class="example-iupac">IUPAC · 1,2,3,3-tetramethylcyclobut-1-ene</span><span class="example-family">Cycloalkene</span></button>
+              <button type="button" class="example-card" data-example="C8H14" data-example-mode="cycloalkene" data-example-family="Cycloalkene"><span class="example-formula">C<sub>8</sub>H<sub>14</sub></span><span class="example-name">Substituted cycloalkene isomers</span><span class="example-iupac">IUPAC · varied ring sizes, substituents, and double-bond positions</span><span class="example-family">Cycloalkene</span></button>
+              <button type="button" class="example-card" data-example="C5H8" data-example-mode="bicyclic" data-example-family="Bicyclic"><span class="example-formula">C<sub>5</sub>H<sub>8</sub></span><span class="example-name">Bridged and spiro rings</span><span class="example-iupac">IUPAC · bicyclo[2.1.0]pentane, spiro[2.2]pentane</span><span class="example-family">Bicyclic</span></button>
+              <button type="button" class="example-card" data-example="C9H12" data-example-mode="aromatic" data-example-family="Aromatic"><span class="example-formula">C<sub>9</sub>H<sub>12</sub></span><span class="example-name">C9 alkylbenzene isomers</span><span class="example-iupac">IUPAC · includes trimethyl- and ethyl-methylbenzene isomers</span><span class="example-family">Aromatic</span></button>
+              <button type="button" class="example-card" data-example="1,2,4-trimethylbenzene" data-example-mode="aromatic" data-example-family="Aromatic"><span class="example-formula">C<sub>9</sub>H<sub>12</sub></span><span class="example-name">Pseudocumene</span><span class="example-iupac">IUPAC · 1,2,4-trimethylbenzene</span><span class="example-family">Aromatic</span></button>
+              <button type="button" class="example-card" data-example="C10H14" data-example-mode="aromatic" data-example-family="Aromatic"><span class="example-formula">C<sub>10</sub>H<sub>14</sub></span><span class="example-name">C10 alkylbenzene isomers</span><span class="example-iupac">IUPAC · includes tetramethyl- and ethyl-dimethylbenzene isomers</span><span class="example-family">Aromatic</span></button>
+              <button type="button" class="example-card" data-example="1,2,3,4-tetramethylbenzene" data-example-mode="aromatic" data-example-family="Aromatic"><span class="example-formula">C<sub>10</sub>H<sub>14</sub></span><span class="example-name">Prehnitene</span><span class="example-iupac">IUPAC · 1,2,3,4-tetramethylbenzene</span><span class="example-family">Aromatic</span></button>
+              <button type="button" class="example-card" data-example="C10H8" data-example-mode="fused_aromatic" data-example-family="Fused aromatic"><span class="example-formula">C<sub>10</sub>H<sub>8</sub></span><span class="example-name">Naphthalene</span><span class="example-iupac">IUPAC · fused two-ring aromatic system</span><span class="example-family">Fused aromatic</span></button>
+              <button type="button" class="example-card" data-example="C14H10" data-example-mode="fused_aromatic" data-example-family="Fused aromatic"><span class="example-formula">C<sub>14</sub>H<sub>10</sub></span><span class="example-name">Three-ring fused aromatics</span><span class="example-iupac">IUPAC · anthracene and phenanthrene</span><span class="example-family">Fused aromatic</span></button>
+              <button type="button" class="example-card" data-example="C5H13N" data-example-mode="amine" data-example-family="Amine"><span class="example-formula">C<sub>5</sub>H<sub>13</sub>N</span><span class="example-name">Branched pentylamine isomers</span><span class="example-iupac">IUPAC · methylbutanamine and pentanamine isomers</span><span class="example-family">Amine</span></button>
+              <button type="button" class="example-card" data-example="C4H10O" data-example-mode="alcohol" data-example-family="Alcohol"><span class="example-formula">C<sub>4</sub>H<sub>10</sub>O</span><span class="example-name">Butanol isomers</span><span class="example-iupac">IUPAC · butan-1-ol, butan-2-ol, and branched isomers</span><span class="example-family">Alcohol</span></button>
+              <button type="button" class="example-card surprise-btn" data-example="surprise" data-example-mode="auto"><span class="example-formula">&#x2728; Surprise me</span><span class="example-name">Pick something unexpected</span><span class="example-iupac">Random supported structures</span><span class="example-family">Random</span></button>
+            </div>
+            <div class="examples-progress" aria-hidden="true"><span data-examples-progress></span></div>
+          </section>
+
           <div class="settings-grid">
-            <label class="select-control" for="view-select">
-              <span>View</span>
-              <select id="view-select" data-view-select>
-                <option value="atom" selected>Atom labels</option>
-                <option value="bondline">Bond-line</option>
-                <option value="3d">3D</option>
-              </select>
-            </label>
+            <div class="select-control" data-select data-mode-select>
+              <span class="select-label">Mode</span>
+              <button type="button" class="select-trigger" data-select-trigger aria-label="Mode" aria-haspopup="listbox" aria-expanded="false" aria-controls="mode-options">
+                <span class="select-value" data-select-value>Auto</span>
+                <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="select-menu" id="mode-options" data-select-menu role="listbox" aria-label="Mode" hidden>
+                <div class="select-options">
+                  <button type="button" class="select-option" data-select-option="auto">Auto</button>
+                  <div class="select-optgroup">Hydrocarbons</div>
+                  <button type="button" class="select-option" data-select-option="alkane">Alkane</button>
+                  <button type="button" class="select-option" data-select-option="alkene">Alkene</button>
+                  <button type="button" class="select-option" data-select-option="alkyne">Alkyne</button>
+                  <button type="button" class="select-option" data-select-option="cycloalkane">Cycloalkane</button>
+                  <button type="button" class="select-option" data-select-option="cycloalkene">Cycloalkene</button>
+                  <button type="button" class="select-option" data-select-option="diene">Diene</button>
+                  <button type="button" class="select-option" data-select-option="bicyclic">Bicyclic</button>
+                  <button type="button" class="select-option" data-select-option="aromatic">Aromatic</button>
+                  <button type="button" class="select-option" data-select-option="fused_aromatic">Fused aromatic</button>
+                  <div class="select-optgroup">Functional Groups</div>
+                  <button type="button" class="select-option" data-select-option="haloalkane">Haloalkane</button>
+                  <button type="button" class="select-option" data-select-option="alcohol">Alcohol</button>
+                  <button type="button" class="select-option" data-select-option="ether">Ether</button>
+                  <button type="button" class="select-option" data-select-option="aldehyde">Aldehyde</button>
+                  <button type="button" class="select-option" data-select-option="ketone">Ketone</button>
+                  <button type="button" class="select-option" data-select-option="carboxylic acid">Carboxylic Acid</button>
+                  <button type="button" class="select-option" data-select-option="ester">Ester</button>
+                  <button type="button" class="select-option" data-select-option="amine">Amine</button>
+                  <button type="button" class="select-option" data-select-option="nitrile">Nitrile</button>
+                  <button type="button" class="select-option" data-select-option="nitro">Nitro</button>
+                  <button type="button" class="select-option" data-select-option="amide">Amide</button>
+                  <div class="select-optgroup">General</div>
+                  <button type="button" class="select-option" data-select-option="general_hydrocarbon">Hydrocarbon</button>
+                  <button type="button" class="select-option" data-select-option="general_heteroatom">Heterocompound</button>
+                </div>
+              </div>
+            </div>
+            <div class="select-control" data-select data-theme-select>
+              <span class="select-label">Theme</span>
+              <button type="button" class="select-trigger" data-select-trigger aria-label="Theme" aria-haspopup="listbox" aria-expanded="false" aria-controls="theme-options">
+                <span class="select-value" data-select-value>Auto</span>
+                <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="select-menu" id="theme-options" data-select-menu role="listbox" aria-label="Theme" hidden>
+                <div class="select-options">
+                  <button type="button" class="select-option" data-select-option="auto">Auto</button>
+                  <button type="button" class="select-option" data-select-option="light">Light</button>
+                  <button type="button" class="select-option" data-select-option="dark">Dark</button>
+                </div>
+              </div>
+            </div>
+            <div class="select-control" data-select data-view-select>
+              <span class="select-label">View</span>
+              <button type="button" class="select-trigger" data-select-trigger aria-label="View" aria-haspopup="listbox" aria-expanded="false" aria-controls="view-options">
+                <span class="select-value" data-select-value>Atom labels</span>
+                <svg class="select-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="select-menu" id="view-options" data-select-menu role="listbox" aria-label="View" hidden>
+                <div class="select-options">
+                  <button type="button" class="select-option" data-select-option="atom">Atom labels</button>
+                  <button type="button" class="select-option" data-select-option="bondline">Bond-line</button>
+                  <button type="button" class="select-option" data-select-option="3d">3D</button>
+                </div>
+              </div>
+            </div>
           </div>
-
-          <div class="examples" aria-label="Quick examples">
-            <button type="button" data-example="C5H12" data-example-mode="alkane">C5H12</button>
-            <button type="button" data-example="C6H6" data-example-mode="aromatic">C6H6</button>
-            <button type="button" data-example="acetone" data-example-mode="auto">acetone</button>
-            <button type="button" data-example="acetic acid" data-example-mode="auto">acetic acid</button>
-            <button type="button" data-example="C5H11Br" data-example-mode="haloalkane">C5H11Br</button>
-            <button type="button" class="surprise-btn" data-example="surprise" data-example-mode="auto">&#x2728; Surprise me</button>
-          </div>
-
-          <div class="engagement-row">
-            <span class="streak-badge" data-streak-badge title="Unique compounds explored today">
-              <span aria-hidden="true">&#x1F525;</span>
-              <span data-exploration-count>0</span>
-              <span>explored today</span>
-            </span>
-            <span class="daily-formula" data-daily-formula title="Formula of the day">
-              <span aria-hidden="true">&#x1F4C5;</span>
-              <span data-daily-label></span>
-            </span>
-          </div>
-
-          <footer class="creator">
-            <span>Made by Kidus Sofonias</span>
-            <a href="https://github.com/Kidus-Sofonias" target="_blank" rel="noreferrer">GitHub</a>
-          </footer>
         </div>
 
-        <aside class="result-panel" data-summary aria-live="polite"></aside>
       </section>
-      </section>
-      <!-- /search page -->
 
-      <!-- Page 2: Results -->
-      <section class="page page-results" data-page="results" aria-label="Results page" hidden>
-      <section class="results-section" data-results-section>
+      <!-- Results -->
+      <section class="results-section" id="results-section" data-results-section>
         <div class="section-heading">
           <h2 data-results-title>Isomers</h2>
           <p data-count-label></p>
-        </div>
-        <div class="section-toolbar">
-          <button type="button" class="toolbar-btn" data-flashcard-toggle title="Toggle flashcard mode">
-            <span aria-hidden="true">&#x1F4AD;</span>
-            <span>Flashcards</span>
-          </button>
-          <button type="button" class="toolbar-btn" data-prediction-toggle title="Guess the count before looking">
-            <span aria-hidden="true">&#x1F3AF;</span>
-            <span>Guess count</span>
-          </button>
-        </div>
-        <div class="prediction-bar" data-prediction-bar hidden>
-          <label for="guess-input">How many isomers do you think this formula has?</label>
-          <div class="prediction-row">
-            <input type="number" id="guess-input" data-guess-input min="1" max="999" placeholder="Enter your guess">
-            <button type="button" data-guess-submit>Submit</button>
-          </div>
-          <p class="prediction-result" data-prediction-result hidden></p>
         </div>
         <div class="analysis-progress" data-analysis-progress hidden>
           <span></span>
@@ -127,21 +189,12 @@
         </div>
         <div class="isomer-grid" data-results></div>
       </section>
-      </section>
-      <!-- /results page -->
-    </main>
 
-    <!-- Bottom tab navigation (mobile) -->
-    <nav class="bottom-nav" data-bottom-nav aria-label="Page navigation">
-      <button type="button" class="bottom-nav-btn active" data-nav-page="search" aria-label="Search">
-        <span aria-hidden="true">&#x1F50D;</span>
-        <span>Search</span>
-      </button>
-      <button type="button" class="bottom-nav-btn" data-nav-page="results" aria-label="Results">
-        <span aria-hidden="true">&#x1F4CA;</span>
-        <span>Results</span>
-      </button>
-    </nav>
+      <footer class="creator">
+        <span>Made by Kidus Sofonias</span>
+        <a href="https://github.com/Kidus-Sofonias" target="_blank" rel="noreferrer">GitHub</a>
+      </footer>
+    </main>
 
     <template id="empty-state-template">
       <div class="empty-state">
@@ -227,52 +280,43 @@
     </div>
 
     <div class="tour-backdrop" data-tour hidden>
-      <section class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-        <div class="tour-copy">
-          <p class="eyebrow">How to use</p>
-          <h2 id="tour-title">Explore isomers in style</h2>
-          <div class="tour-step-list">
-            <article>
-              <span>1</span>
-              <strong>Search for compounds</strong>
-              <p>Enter a formula like C5H12 or a name like isobutane, toluene, or acetone.</p>
-            </article>
-            <article>
-              <span>2</span>
-              <strong>Browse the results</strong>
-              <p>Cards show each isomer with its IUPAC name, formula, and structure diagram. Switch between pages using the bottom tabs.</p>
-            </article>
-            <article>
-              <span>3</span>
-              <strong>Flip & learn with Flashcards</strong>
-              <p>Toggle flashcard mode to test yourself &mdash; tap a card to flip between the name and the structure diagram.</p>
-            </article>
-            <article>
-              <span>4</span>
-              <strong>Guess before you see</strong>
-              <p>Use the &ldquo;Guess count&rdquo; tool to predict how many isomers exist for a formula before the cards appear.</p>
-            </article>
-            <article>
-              <span>5</span>
-              <strong>Daily formula & streak</strong>
-              <p>Check the formula of the day and track how many unique compounds you explore each day.</p>
-            </article>
-            <article>
-              <span>6</span>
-              <strong>Open for a closer look</strong>
-              <p>Tap &ldquo;Open&rdquo; on any card for a full-screen view with atom labels, bond-line, or interactive 3D modes.</p>
-            </article>
-          </div>
-          <div class="tour-actions">
-            <button type="button" data-tour-close>Start exploring</button>
-          </div>
+      <div class="tour-spotlight" data-tour-spotlight></div>
+      <div class="tour-popover" data-tour-popover role="dialog" aria-modal="true" aria-labelledby="tour-title">
+        <div class="tour-popover-header">
+          <div class="tour-progress" data-tour-progress></div>
+          <button type="button" class="tour-popover-close" data-tour-close aria-label="Skip tour">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
-      </section>
+        <div class="tour-popover-body">
+          <p class="eyebrow">How to use</p>
+          <h2 id="tour-title" data-tour-title></h2>
+          <p class="tour-description" data-tour-description></p>
+        </div>
+        <div class="tour-popover-nav">
+          <button type="button" class="tour-nav-btn tour-nav-btn-prev" data-tour-prev>Back</button>
+          <button type="button" class="tour-nav-btn tour-nav-btn-next" data-tour-next>Next</button>
+        </div>
+      </div>
     </div>
 
     <script src="vendor/three.min.js"></script>
     <script src="vendor/qrcode.js"></script>
     <script src="molecule-viewer-3d.js"></script>
+    <script src="chemengine/families/alkane.js"></script>
+    <script src="chemengine/families/alkene-alkyne.js"></script>
+    <script src="chemengine/families/alkene.js"></script>
+    <script src="chemengine/families/alkyne.js"></script>
+    <script src="chemengine/families/alcohol.js"></script>
+    <script src="chemengine/families/amine.js"></script>
+    <script src="chemengine/families/aromatic.js"></script>
+    <script src="chemengine/families/bicyclic.js"></script>
+    <script src="chemengine/families/cycloalkane.js"></script>
+    <script src="chemengine/families/cycloalkene.js"></script>
+    <script src="chemengine/families/diene.js"></script>
+    <script src="chemengine/families/fused-aromatic.js"></script>
+    <script src="chemengine/families/haloalkane.js"></script>
+    <script src="chemengine/families/substituted-alkane.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -72,11 +72,13 @@
     this._molGroup = null;
     this._animId = null;
     this._autoRotate = true;
+    this._autoRotateBeforeDrag = true;
+    this._fitRadius = 6;
 
     // interaction state
     this._isDown = false;
     this._prev = { x: 0, y: 0 };
-    this._spherical = { theta: 0.3, phi: 0.8, radius: 6 };
+    this._spherical = { theta: 0.3, phi: 0.95, radius: 6 };
     this._target = new THREE.Vector3(0, 0, 0);
     this._tmpVec = new THREE.Vector3();
 
@@ -99,21 +101,20 @@
 
     // Scene
     var scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0e1a); // deep navy
+    scene.background = null;
 
     // Camera
     var w = container.clientWidth || 400;
     var h = container.clientHeight || 300;
-    var camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 50);
-    camera.position.set(0, 1.5, 6);
+    var camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+    camera.position.set(0, 1.5, this._fitRadius);
     camera.lookAt(0, 0, 0);
 
     // Renderer
     var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(w, h);
     renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     container.appendChild(renderer.domElement);
@@ -125,12 +126,6 @@
     var molGroup = new THREE.Group();
     molGroup.position.set(0, 0, 0);
     scene.add(molGroup);
-
-    // Starfield
-    this._addStars(scene);
-
-    // Ground ring (subtle)
-    this._addGroundRing(scene);
 
     this._scene = scene;
     this._camera = camera;
@@ -178,17 +173,7 @@
     // Offset so molecule is centred
     var offset = this._tmpVec.set(-cx, -cy, -cz);
 
-    // Determine overall scale
-    var maxR = 0;
-    for (var si = 0; si < atoms.length; si++) {
-      var dx = atoms[si].x - cx;
-      var dy = (atoms[si].y || 0) - cy;
-      var dz = (atoms[si].z || 0) - cz;
-      var r = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (r > maxR) maxR = r;
-    }
-    var scale = maxR > 0.01 ? 3.2 / maxR : 1;
-    scale = clamp(scale, 0.3, 3);
+    var scale = 1;
 
     // Deduplicate bond pairs: store in a map keyed by "from,to"
     var bondMap = {};
@@ -213,9 +198,11 @@
       var col = atomColor(el);
       var rad = atomRadius(el) * scale;
 
-      var geo = sphereGeoCache[el] || makeSphere(rad);
-      if (!sphereGeoCache[el]) sphereGeoCache[el] = geo;
-      else geo = sphereGeoCache[el];
+      var geo = sphereGeoCache[el];
+      if (!geo) {
+        geo = makeSphere(rad);
+        sphereGeoCache[el] = geo;
+      }
 
       // scale geometry if radii differ slightly
       var mat = new THREE.MeshPhysicalMaterial({
@@ -273,37 +260,37 @@
       var perp1 = new THREE.Vector3().crossVectors(norm, upRef).normalize();
       var perp2 = new THREE.Vector3().crossVectors(norm, perp1).normalize();
 
-      var br = BOND_RADIUS * scale;
+      var br = BOND_RADIUS;
 
       if (order === 1) {
         this._addBondCylinder(group, p1, p2, br, 0x808080);
       } else if (order === 2) {
         this._addBondCylinder(
           group,
-          p1.clone().add(perp1.clone().multiplyScalar(DOUBLE_OFFSET * scale)),
-          p2.clone().add(perp1.clone().multiplyScalar(DOUBLE_OFFSET * scale)),
+          p1.clone().add(perp1.clone().multiplyScalar(DOUBLE_OFFSET)),
+          p2.clone().add(perp1.clone().multiplyScalar(DOUBLE_OFFSET)),
           br,
           0x808080
         );
         this._addBondCylinder(
           group,
-          p1.clone().add(perp1.clone().multiplyScalar(-DOUBLE_OFFSET * scale)),
-          p2.clone().add(perp1.clone().multiplyScalar(-DOUBLE_OFFSET * scale)),
+          p1.clone().add(perp1.clone().multiplyScalar(-DOUBLE_OFFSET)),
+          p2.clone().add(perp1.clone().multiplyScalar(-DOUBLE_OFFSET)),
           br,
           0x808080
         );
       } else if (order >= 3) {
         this._addBondCylinder(
           group,
-          p1.clone().add(perp1.clone().multiplyScalar(TRIPLE_OFFSET * scale)),
-          p2.clone().add(perp1.clone().multiplyScalar(TRIPLE_OFFSET * scale)),
+          p1.clone().add(perp1.clone().multiplyScalar(TRIPLE_OFFSET)),
+          p2.clone().add(perp1.clone().multiplyScalar(TRIPLE_OFFSET)),
           br,
           0x808080
         );
         this._addBondCylinder(
           group,
-          p1.clone().add(perp1.clone().multiplyScalar(-TRIPLE_OFFSET * scale)),
-          p2.clone().add(perp1.clone().multiplyScalar(-TRIPLE_OFFSET * scale)),
+          p1.clone().add(perp1.clone().multiplyScalar(-TRIPLE_OFFSET)),
+          p2.clone().add(perp1.clone().multiplyScalar(-TRIPLE_OFFSET)),
           br,
           0x808080
         );
@@ -311,11 +298,33 @@
       }
     }
 
+    var bounds = new THREE.Box3().setFromObject(group);
+    var boundingRadius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
+    var verticalFov = this._camera.fov * Math.PI / 180;
+    var horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this._camera.aspect);
+    this._fitRadius = Math.max(
+      boundingRadius / Math.sin(verticalFov / 2),
+      boundingRadius / Math.sin(horizontalFov / 2),
+      3
+    ) * 1.12;
+    this._camera.far = Math.max(100, this._fitRadius * 5);
+    this._camera.updateProjectionMatrix();
+
     // Reset camera
+    this.resetView();
+  };
+
+  MoleculeViewer3D.prototype.resetView = function () {
     this._spherical.theta = 0.3;
-    this._spherical.phi = 0.8;
-    this._spherical.radius = 6;
+    this._spherical.phi = 0.95;
+    this._spherical.radius = this._fitRadius;
+    this._autoRotate = true;
     this._updateCamera();
+  };
+
+  MoleculeViewer3D.prototype.toggleRotation = function () {
+    this._autoRotate = !this._autoRotate;
+    return this._autoRotate;
   };
 
   /** Resize – call when container changes size */
@@ -325,6 +334,21 @@
     var h = this._container.clientHeight || 300;
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+    if (this._molGroup && this._molGroup.children.length) {
+      var bounds = new THREE.Box3().setFromObject(this._molGroup);
+      var boundingRadius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
+      var verticalFov = this._camera.fov * Math.PI / 180;
+      var horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this._camera.aspect);
+      this._fitRadius = Math.max(
+        boundingRadius / Math.sin(verticalFov / 2),
+        boundingRadius / Math.sin(horizontalFov / 2),
+        3
+      ) * 1.12;
+      this._camera.far = Math.max(100, this._fitRadius * 5);
+      this._camera.updateProjectionMatrix();
+      this._spherical.radius = Math.max(this._spherical.radius, this._fitRadius);
+      this._updateCamera();
+    }
     this._renderer.setSize(w, h);
   };
 
@@ -469,6 +493,7 @@
     var pt = e.touches ? e.touches[0] : e;
     this._prev.x = pt.clientX;
     this._prev.y = pt.clientY;
+    this._autoRotateBeforeDrag = this._autoRotate;
     this._autoRotate = false;
 
     global.addEventListener("mousemove", this._bound.mm, false);
@@ -493,7 +518,7 @@
 
   MoleculeViewer3D.prototype._onMouseUp = function () {
     this._isDown = false;
-    this._autoRotate = true;
+    this._autoRotate = this._autoRotateBeforeDrag;
     global.removeEventListener("mousemove", this._bound.mm, false);
     global.removeEventListener("mouseup", this._bound.mu, false);
     global.removeEventListener("touchmove", this._bound.mm, false);
@@ -502,7 +527,11 @@
 
   MoleculeViewer3D.prototype._onWheel = function (e) {
     e.preventDefault();
-    this._spherical.radius = clamp(this._spherical.radius + e.deltaY * 0.005, 2, 14);
+    this._spherical.radius = clamp(
+      this._spherical.radius + e.deltaY * 0.005,
+      this._fitRadius * 0.35,
+      this._fitRadius * 3
+    );
     this._updateCamera();
   };
 

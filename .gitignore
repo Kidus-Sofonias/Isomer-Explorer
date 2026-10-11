@@ -1,1 +1,7 @@
 preview*.png
+build/
+node_modules/
+.pytest_cache/
+build-screenshot*.png
+.crunchy-check.mjs
+.interact-built.mjs

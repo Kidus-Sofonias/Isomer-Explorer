@@ -32,6 +32,22 @@ Open `index.html` in a browser and enter formulas such as:
 
 The app validates the formula, calculates degree of unsaturation, enumerates the selected family, names each isomer, recognizes common hydrocarbon aliases, and draws atom-label, zigzag bond-line, aromatic-ring, or interactive 3D diagrams.
 
+## Chemistry engine layout
+
+The chemistry engine's family-specific structure enumerators are in `chemengine/families/`:
+
+- `alkane.js` builds acyclic saturated carbon skeletons.
+- `alkene.js` and `alkyne.js` select the family-specific double- and triple-bond algorithms from the shared `alkene-alkyne.js` graph routine.
+- `diene.js` enumerates acyclic structures with two double bonds.
+- `cycloalkane.js` and `cycloalkene.js` enumerate monocyclic families.
+- `bicyclic.js` enumerates the supported C5 bicyclic structures.
+- `aromatic.js` enumerates single-ring alkylbenzenes.
+- `fused-aromatic.js` builds naphthalene, anthracene, and phenanthrene.
+- `haloalkane.js`, `alcohol.js`, and `amine.js` configure their compound-specific attachment rules over the shared `substituted-alkane.js` saturated-substitution algorithm.
+
+These modules receive shared graph, canonicalization, and naming helpers from `app.js`. The application integration, formula parsing and validation, name parsing, and shared graph/naming helpers remain in `app.js`; family algorithms can be changed independently without duplicating those primitives.
+The service worker precaches the family modules and the 3D viewer so these features remain available after an offline launch.
+
 ## Viewer Features
 
 - Switch between atom-label, bond-line, and lightweight interactive 3D structure views.
@@ -50,13 +66,27 @@ The app gives exact structural-isomer results through `C12` for:
 - Acyclic alkanes: `CnH2n+2`
 - Acyclic monoalkenes: `CnH2n`
 - Acyclic monoalkynes: `CnH2n-2`
+- Saturated monocyclic cycloalkanes: `CnH2n`
 - Single benzene-ring alkyl aromatics: `CnH2n-6`
 - Saturated haloalkanes with one halogen: `CnH2n+1X`
 - Saturated monohydric alcohols: `CnH2n+2O`
+- Saturated primary monoamines: `CnH2n+3N`
 
-Some formulas can represent more than one broad family. For example, `C5H8` can also describe dienes or rings, but alkyne mode intentionally lists acyclic monoalkynes only. Stereoisomers and conformers are not counted separately.
+The following additional hydrocarbon families are enumerated through `C8`:
 
-Derivative support is intentionally focused: mono-haloalkane and alcohol formulas can be enumerated; saturated haloalkane names with halogen prefixes and straight-chain alkyl branches can be parsed directly. Ethers and broader multi-functional derivatives are outside the current scope.
+- Acyclic dienes with exactly two carbon-carbon double bonds: `CnH2n-2`
+- Monocyclic cycloalkenes with exactly one double bond: `CnH2n-2`
+
+Additional bounded ring support:
+
+- C5 bicyclic saturated hydrocarbons: bridged, fused, and spiro carbon skeletons (`C5H8`)
+- Fused benzenoid aromatics: naphthalene (`C10H8`), anthracene, and phenanthrene (`C14H10`)
+
+Some formulas can represent more than one broad family. For example, `C5H8` can describe alkynes, dienes, and cycloalkenes, so choose the family mode to see the intended subset. Stereoisomers and conformers are not counted separately.
+
+Bicyclic formulas above C5, tricyclic/polycyclic formulas, other fused aromatic systems beyond the listed compounds, and dienes beyond C8 are not enumerated yet. The app reports unsupported results rather than presenting partial counts.
+
+Derivative support is intentionally focused: mono-haloalkane, alcohol, and primary monoamine formulas can be enumerated; saturated haloalkane names with halogen prefixes and straight-chain alkyl branches can be parsed directly. Other functional-group modes are not enumerated reliably yet and return an explicit unsupported result instead of displaying incomplete or formula-mismatched structures.
 
 IUPAC name parsing supports the generated names, larger acyclic hydrocarbons with straight-chain alkyl substituents, saturated haloalkanes such as `1,1-dibromopentane`, and larger alkylbenzene names with straight-chain alkyl substituents. A truly universal IUPAC parser for every organic compound would require a dedicated cheminformatics engine.
 
@@ -65,7 +95,9 @@ IUPAC name parsing supports the generated names, larger acyclic hydrocarbons wit
 Run:
 
 ```bash
-node tests.js
+npm test
 ```
 
-The tests compare generated alkane isomer counts against the known sequence from methane through dodecane.
+The tests compare generated alkane isomer counts against the known sequence from methane through dodecane, verify known small diene, cycloalkene, cycloalkane, and bicyclic counts, validate fused-aromatic formulas, check 3D atom/valence conservation, and verify unsupported families fail explicitly.
+
+Start the local development server with `npm run dev`. It builds the static app first and serves only `build/` on loopback.

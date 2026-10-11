@@ -1,17 +1,66 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
-    module.exports = factory();
+    module.exports = factory(root.HydrocarbonEngineAlgorithms);
   } else {
-    root.HydrocarbonApp = factory();
+    root.HydrocarbonApp = factory(root.HydrocarbonEngineAlgorithms);
   }
-})(typeof self !== "undefined" ? self : this, function () {
+
+})(typeof self !== "undefined" ? self : this, function (algorithmModules) {
   "use strict";
 
+  if (!algorithmModules ||
+      typeof algorithmModules.alkane !== "function" ||
+      typeof algorithmModules.alkeneAlkyne !== "function" ||
+      typeof algorithmModules.alkene !== "function" ||
+      typeof algorithmModules.alkyne !== "function" ||
+      typeof algorithmModules.alcohol !== "function" ||
+      typeof algorithmModules.amine !== "function" ||
+      typeof algorithmModules.aromatic !== "function" ||
+      typeof algorithmModules.bicyclic !== "function" ||
+      typeof algorithmModules.cycloalkane !== "function" ||
+      typeof algorithmModules.cycloalkene !== "function" ||
+      typeof algorithmModules.diene !== "function" ||
+      typeof algorithmModules.fusedAromatic !== "function" ||
+      typeof algorithmModules.haloalkane !== "function" ||
+      typeof algorithmModules.substitutedAlkane !== "function") {
+    throw new Error("Chemistry family algorithms were not loaded before the application.");
+  }
+
   var MAX_CARBONS = 12;
+  var MAX_CACHE_SIZE = 500;
   var plantedCache = new Map();
   var rootCache = new Map();
   var aromaticCache = new Map();
   var nameIndexCache = null;
+  var ENUMERATED_FAMILIES = {
+    alkane: true,
+    alkene: true,
+    alkyne: true,
+    cycloalkane: true,
+    cycloalkene: true,
+    diene: true,
+    bicyclic: true,
+    fused_aromatic: true,
+    aromatic: true,
+    haloalkane: true,
+    alcohol: true,
+    amine: true
+  };
+
+  function pruneCache(cache) {
+    if (cache.size > MAX_CACHE_SIZE) {
+      var keysToDelete = [];
+      cache.forEach(function (_, key) {
+        keysToDelete.push(key);
+        if (keysToDelete.length >= cache.size - MAX_CACHE_SIZE) {
+          return;
+        }
+      });
+      keysToDelete.forEach(function (key) {
+        cache.delete(key);
+      });
+    }
+  }
 
   var FAMILY_INFO = {
     alkane: {
@@ -78,6 +127,51 @@
       label: "Amine",
       description: "Saturated primary monoamines with one -NH2 group.",
       pattern: "CnH2n+3N"
+    },
+    cycloalkene: {
+      label: "Cycloalkene",
+      description: "Monocyclic hydrocarbons with one ring and one carbon-carbon double bond; stereoisomers are not counted separately. Enumeration is limited to C8.",
+      pattern: "CnH2n-2"
+    },
+    diene: {
+      label: "Diene",
+      description: "Acyclic hydrocarbons with exactly two carbon-carbon double bonds; stereoisomers are not counted separately. Enumeration is limited to C8.",
+      pattern: "CnH2n-2"
+    },
+    bicyclic: {
+      label: "Bicyclic",
+      description: "Saturated carbon-only skeletons with exactly two rings, including bridged, fused, and spiro arrangements. Enumeration is currently limited to C5.",
+      pattern: "CnH2n-2"
+    },
+    fused_aromatic: {
+      label: "Fused Aromatic",
+      description: "Fused benzenoid ring systems: naphthalene, anthracene, and phenanthrene.",
+      pattern: "Selected fused-ring aromatic structures"
+    },
+    nitrile: {
+      label: "Nitrile",
+      description: "Saturated nitriles with one -C\u2261N group.",
+      pattern: "CnH2n-1N"
+    },
+    nitro: {
+      label: "Nitro",
+      description: "Saturated nitroalkanes with one -NO2 group.",
+      pattern: "CnH2n+1NO2"
+    },
+    amide: {
+      label: "Amide",
+      description: "Saturated monocarboxamides with one -CONH2 group.",
+      pattern: "CnH2n+1NO"
+    },
+    general_hydrocarbon: {
+      label: "Hydrocarbon",
+      description: "Generic hydrocarbon with rings and/or multiple bonds not matching standard families.",
+      pattern: "CnHm"
+    },
+    general_heteroatom: {
+      label: "Heterocompound",
+      description: "Generic organic compound with heteroatoms not matching standard functional families.",
+      pattern: "CnHmOxNyXz"
     }
   };
 
@@ -156,6 +250,12 @@
     nonadec: 19,
     eicos: 20
   };
+
+  var EXTENDED_STEMS_REVERSE = Object.fromEntries(Object.entries(EXTENDED_STEMS).map(function (_ref) {
+    var k = _ref[0];
+    var v = _ref[1];
+    return [v, k];
+  }));
 
   var ALKYL_LENGTHS = {
     methyl: 1,
@@ -412,11 +512,15 @@
       }
       var digits = formula.slice(digitStart, cursor);
       var count = digits ? Number(digits) : 1;
-      if (!Number.isInteger(count) || count < 1) {
+      if (!Number.isSafeInteger(count) || count < 1) {
         throw new Error("Element counts must be positive whole numbers.");
       }
 
-      totals[symbol] += count;
+      var nextTotal = totals[symbol] + count;
+      if (!Number.isSafeInteger(nextTotal)) {
+        throw new Error("Element counts must be positive whole numbers.");
+      }
+      totals[symbol] = nextTotal;
     }
 
     if (totals.C < 1 || totals.H < 1) {
@@ -607,6 +711,12 @@
 
     var remaining = n;
     while (remaining > 2) {
+      if (leaves.length === 0) {
+        // Graph has a cycle (all degrees >= 2). Fall back to all nodes as centers.
+        return Array.from({ length: n }, function (_, index) {
+          return index;
+        });
+      }
       var nextLeaves = [];
       remaining -= leaves.length;
       for (var l = 0; l < leaves.length; l += 1) {
@@ -639,32 +749,17 @@
     return "(" + [left, right].sort(compareStrings).join("") + ")";
   }
 
-  function generateAlkaneIsomers(carbonCount) {
-    if (!Number.isInteger(carbonCount) || carbonCount < 1 || carbonCount > MAX_CARBONS) {
-      throw new Error("Carbon count must be between 1 and " + MAX_CARBONS + ".");
-    }
+  var generateAlkaneIsomers = algorithmModules.alkane({
+    MAX_CARBONS: MAX_CARBONS,
+    rootForms: rootForms,
+    parseRootedTree: parseRootedTree,
+    freeCanonical: freeCanonical
+  });
 
-    var seen = new Map();
-    var candidates = rootForms(carbonCount);
-    for (var i = 0; i < candidates.length; i += 1) {
-      var adjacency = parseRootedTree(candidates[i]);
-      var isValid = adjacency.every(function (neighbors) {
-        return neighbors.length <= 4;
-      });
-      if (!isValid) {
-        continue;
-      }
-
-      var canonical = freeCanonical(adjacency);
-      if (!seen.has(canonical)) {
-        seen.set(canonical, { canonical: canonical, adjacency: adjacency });
-      }
-    }
-
-    return Array.from(seen.values());
-  }
-
-  function rootedCanonicalWeighted(adjacency, node, parent, edgeOrders) {
+  function rootedCanonicalWeighted(adjacency, node, parent, edgeOrders, visited) {
+    if (!visited) visited = new Set();
+    if (visited.has(node)) return "";
+    visited.add(node);
     var childCodes = [];
     for (var i = 0; i < adjacency[node].length; i += 1) {
       var next = adjacency[node][i];
@@ -685,94 +780,475 @@
     return codes[0];
   }
 
+  function canonicalGraphCode(adjacency, edgeOrders) {
+    var classes = new Map();
+    for (var atom = 0; atom < adjacency.length; atom += 1) {
+      var signature = adjacency[atom].length + ":" + weightedValence(adjacency, atom, edgeOrders);
+      if (!classes.has(signature)) classes.set(signature, []);
+      classes.get(signature).push(atom);
+    }
+    var groups = Array.from(classes.entries()).sort(function (left, right) {
+      return compareStrings(left[0], right[0]);
+    }).map(function (entry) {
+      return entry[1];
+    });
+    var best = null;
+    var ordering = [];
+
+    function encode() {
+      var pieces = [];
+      for (var i = 0; i < ordering.length; i += 1) {
+        for (var j = i + 1; j < ordering.length; j += 1) {
+          pieces.push(adjacency[ordering[i]].indexOf(ordering[j]) === -1
+            ? "0"
+            : String(getBondOrder(edgeOrders, ordering[i], ordering[j])));
+        }
+      }
+      var candidate = pieces.join("");
+      if (best === null || candidate < best) best = candidate;
+    }
+
+    function permutations(group, start, emit) {
+      if (start === group.length) {
+        emit(group);
+        return;
+      }
+      for (var i = start; i < group.length; i += 1) {
+        var swap = group[start];
+        group[start] = group[i];
+        group[i] = swap;
+        permutations(group, start + 1, emit);
+        swap = group[start];
+        group[start] = group[i];
+        group[i] = swap;
+      }
+    }
+
+    function buildOrder(groupIndex) {
+      if (groupIndex === groups.length) {
+        encode();
+        return;
+      }
+      permutations(groups[groupIndex].slice(), 0, function (permutation) {
+        ordering.push.apply(ordering, permutation);
+        buildOrder(groupIndex + 1);
+        ordering.length -= permutation.length;
+      });
+    }
+
+    buildOrder(0);
+    return adjacency.length + ":" + best;
+  }
+
   function canPlaceMultipleBond(adjacency, a, b, bondOrder) {
     var edgeOrders = new Map();
     edgeOrders.set(edgeKey(a, b), bondOrder);
     return weightedValence(adjacency, a, edgeOrders) <= 4 && weightedValence(adjacency, b, edgeOrders) <= 4;
   }
 
-  function generateCycloalkaneIsomers(carbonCount) {
-    if (!Number.isInteger(carbonCount) || carbonCount < 2 || carbonCount > MAX_CARBONS) {
-      throw new Error("Carbon count must be between 2 and " + MAX_CARBONS + ".");
+  function adjacencyWithRingBond(adjacency, ringBond) {
+    var cyclic = cloneAdjacency(adjacency);
+    cyclic[ringBond[0]].push(ringBond[1]);
+    cyclic[ringBond[1]].push(ringBond[0]);
+    return cyclic;
+  }
+
+  function orderedCycle(adjacency, cycleNodes, start, next) {
+    var cycleSet = new Set(cycleNodes);
+    var path = [start, next];
+    var previous = start;
+    var current = next;
+    while (path.length <= cycleNodes.length) {
+      var candidates = adjacency[current].filter(function (neighbor) {
+        return cycleSet.has(neighbor) && neighbor !== previous;
+      });
+      if (!candidates.length) return [];
+      var following = candidates[0];
+      if (following === start) {
+        return path.length === cycleNodes.length ? path : [];
+      }
+      if (path.indexOf(following) !== -1) return [];
+      path.push(following);
+      previous = current;
+      current = following;
+    }
+    return [];
+  }
+
+  function canonicalUnicyclicWeighted(adjacency, edgeOrders) {
+    var cycleNodes = findRingNodes(adjacency);
+    if (cycleNodes.length < 3) return "";
+
+    var candidates = [];
+    for (var i = 0; i < cycleNodes.length; i += 1) {
+      var start = cycleNodes[i];
+      var ringNeighbors = adjacency[start].filter(function (neighbor) {
+        return cycleNodes.indexOf(neighbor) !== -1;
+      });
+      for (var j = 0; j < ringNeighbors.length; j += 1) {
+        var cycle = orderedCycle(adjacency, cycleNodes, start, ringNeighbors[j]);
+        if (!cycle.length) continue;
+        var signature = cycle.map(function (node, index) {
+          var previous = cycle[(index + cycle.length - 1) % cycle.length];
+          var next = cycle[(index + 1) % cycle.length];
+          var branches = adjacency[node].filter(function (neighbor) {
+            return neighbor !== previous && neighbor !== next;
+          }).map(function (neighbor) {
+            return rootedCanonicalWeighted(adjacency, neighbor, node, edgeOrders);
+          }).sort(compareStrings);
+          return [
+            branches,
+            getBondOrder(edgeOrders, node, next)
+          ];
+        });
+        candidates.push(JSON.stringify(signature));
+      }
+    }
+    candidates.sort(compareStrings);
+    return candidates[0] || "";
+  }
+
+  function cycleNameCandidate(adjacency, cycle, edgeOrders, unsaturated) {
+    var cycleSet = new Set(cycle);
+    var substituents = [];
+    var memo = new Map();
+    for (var i = 0; i < cycle.length; i += 1) {
+      var atom = cycle[i];
+      for (var j = 0; j < adjacency[atom].length; j += 1) {
+        var neighbor = adjacency[atom][j];
+        if (!cycleSet.has(neighbor)) {
+          var named = nameSubstituent(adjacency, neighbor, atom, memo);
+          substituents.push({
+            locant: i + 1,
+            name: named.name,
+            sortKey: named.sortKey
+          });
+        }
+      }
     }
 
-    var seen = new Map();
-    var skeletons = generateAlkaneIsomers(carbonCount);
-    for (var i = 0; i < skeletons.length; i += 1) {
-      var adjacency = skeletons[i].adjacency;
-      var n = adjacency.length;
-      
-      // Try to form a ring by connecting each pair of non-adjacent atoms
-      for (var a = 0; a < n; a += 1) {
-        for (var b = a + 1; b < n; b += 1) {
-          // Check if a and b are already directly bonded
-          var alreadyBonded = false;
-          for (var k = 0; k < adjacency[a].length; k += 1) {
-            if (adjacency[a][k] === b) {
-              alreadyBonded = true;
-              break;
+    var locants = substituents.map(function (sub) { return sub.locant; }).sort(function (a, b) { return a - b; });
+    var alphabeticalLocants = substituents.slice().sort(function (a, b) {
+      return compareStrings(a.sortKey, b.sortKey) || compareStrings(a.name, b.name) || a.locant - b.locant;
+    }).map(function (sub) { return sub.locant; });
+    var stem = EXTENDED_STEMS_REVERSE[cycle.length] || String(cycle.length);
+    var parent = unsaturated ? "cyclo" + stem + "-1-ene" : "cyclo" + stem + "ane";
+    var prefix = !unsaturated && substituents.length === 1
+      ? substituents[0].name
+      : formatSubstituentGroups(substituents);
+
+    return {
+      name: prefix ? prefix + parent : parent,
+      locants: locants,
+      alphabeticalLocants: alphabeticalLocants,
+      substituents: substituents
+    };
+  }
+
+  function compareCycleNameCandidates(a, b) {
+    return compareNumberArrays(a.locants, b.locants) ||
+      compareNumberArrays(a.alphabeticalLocants, b.alphabeticalLocants) ||
+      compareStrings(a.name, b.name);
+  }
+
+  function nameCycloalkaneGraph(adjacency) {
+    var cycleNodes = findRingNodes(adjacency);
+    var candidates = [];
+    for (var i = 0; i < cycleNodes.length; i += 1) {
+      var start = cycleNodes[i];
+      var neighbors = adjacency[start].filter(function (neighbor) {
+        return cycleNodes.indexOf(neighbor) !== -1;
+      });
+      for (var j = 0; j < neighbors.length; j += 1) {
+        var cycle = orderedCycle(adjacency, cycleNodes, start, neighbors[j]);
+        if (cycle.length) candidates.push(cycleNameCandidate(adjacency, cycle, null, false));
+      }
+    }
+    candidates.sort(compareCycleNameCandidates);
+    return candidates[0];
+  }
+
+  function nameCycloalkeneGraph(adjacency, edgeOrders) {
+    var cycleNodes = findRingNodes(adjacency);
+    var candidates = [];
+    for (var i = 0; i < cycleNodes.length; i += 1) {
+      var start = cycleNodes[i];
+      var neighbors = adjacency[start].filter(function (neighbor) {
+        return cycleNodes.indexOf(neighbor) !== -1 &&
+          getBondOrder(edgeOrders, start, neighbor) === 2;
+      });
+      for (var j = 0; j < neighbors.length; j += 1) {
+        var cycle = orderedCycle(adjacency, cycleNodes, start, neighbors[j]);
+        if (cycle.length) candidates.push(cycleNameCandidate(adjacency, cycle, edgeOrders, true));
+      }
+    }
+    candidates.sort(compareCycleNameCandidates);
+    return candidates[0];
+  }
+
+  var generateCycloalkaneIsomers = algorithmModules.cycloalkane({
+    MAX_CARBONS: MAX_CARBONS,
+    generateAlkaneIsomers: generateAlkaneIsomers,
+    edgeKey: edgeKey,
+    adjacencyWithRingBond: adjacencyWithRingBond,
+    canonicalUnicyclicWeighted: canonicalUnicyclicWeighted,
+    cloneAdjacency: cloneAdjacency
+  });
+
+  var generateCycloalkeneIsomers = algorithmModules.cycloalkene({
+    generateCycloalkaneIsomers: generateCycloalkaneIsomers,
+    adjacencyWithRingBond: adjacencyWithRingBond,
+    findRingNodes: findRingNodes,
+    cloneEdgeOrders: cloneEdgeOrders,
+    edgeKey: edgeKey,
+    weightedValence: weightedValence,
+    canonicalUnicyclicWeighted: canonicalUnicyclicWeighted,
+    nameCycloalkeneGraph: nameCycloalkeneGraph,
+    cloneAdjacency: cloneAdjacency,
+    compareStrings: compareStrings
+  });
+
+  function simplePathsWithin(adjacency, start, end, allowed) {
+    var paths = [];
+    function walk(node, path) {
+      if (node === end) {
+        paths.push(path.slice());
+        return;
+      }
+      for (var i = 0; i < adjacency[node].length; i += 1) {
+        var next = adjacency[node][i];
+        if (!allowed.has(next) || path.indexOf(next) !== -1) continue;
+        path.push(next);
+        walk(next, path);
+        path.pop();
+      }
+    }
+    walk(start, [start]);
+    return paths;
+  }
+
+  function bicyclicName(adjacency) {
+    var core = findRingNodes(adjacency);
+    var coreSet = new Set(core);
+    var candidates = [];
+    var memo = new Map();
+    if (core.length === 4 && adjacency.length === 5) {
+      var substituent = -1;
+      var attachmentAtom = -1;
+      for (var atom = 0; atom < adjacency.length; atom += 1) {
+        if (coreSet.has(atom)) continue;
+        var coreNeighbors = adjacency[atom].filter(function (neighbor) { return coreSet.has(neighbor); });
+        if (coreNeighbors.length === 1) {
+          substituent = atom;
+          attachmentAtom = coreNeighbors[0];
+          break;
+        }
+      }
+      if (substituent !== -1) {
+        var bridgeDegree = adjacency[attachmentAtom].filter(function (neighbor) {
+          return coreSet.has(neighbor);
+        }).length;
+        return (bridgeDegree === 3 ? "1" : "2") + "-methylbicyclo[1.1.0]butane";
+      }
+    }
+
+    var spiroCenters = core.filter(function (atom) {
+      return adjacency[atom].filter(function (neighbor) { return coreSet.has(neighbor); }).length === 4;
+    });
+    if (spiroCenters.length === 1) {
+      var spiroCenter = spiroCenters[0];
+      var remaining = new Set(core.filter(function (atom) { return atom !== spiroCenter; }));
+      var ringLengths = [];
+      while (remaining.size) {
+        var seed = remaining.values().next().value;
+        var component = [];
+        var stack = [seed];
+        remaining.delete(seed);
+        while (stack.length) {
+          var node = stack.pop();
+          component.push(node);
+          for (var si = 0; si < adjacency[node].length; si += 1) {
+            var next = adjacency[node][si];
+            if (next !== spiroCenter && remaining.has(next)) {
+              remaining.delete(next);
+              stack.push(next);
             }
           }
-          if (alreadyBonded) continue;
-          
-          // Check if both atoms can accept an additional bond (valence <= 4)
-          if (adjacency[a].length >= 4 || adjacency[b].length >= 4) continue;
-          
-          // Create ring by adding a bond between a and b
-          var edgeOrders = new Map();
-          edgeOrders.set(edgeKey(a, b), 1);
-          var canonical = freeCanonicalWeighted(adjacency, edgeOrders);
-          
-          if (!seen.has(canonical)) {
-            seen.set(canonical, {
-              canonical: canonical,
-              adjacency: adjacency,
-              edgeOrders: edgeOrders,
-              ringBond: [a, b],
-              bondOrder: 1
-            });
+        }
+        ringLengths.push(component.length);
+      }
+      if (ringLengths.length === 2) {
+        ringLengths.sort(function (a, b) { return b - a; });
+        var spiroStem = EXTENDED_STEMS_REVERSE[core.length] || String(core.length);
+        return "spiro[" + ringLengths.join(".") + "]" + spiroStem + "ane";
+      }
+    }
+
+    function makeName(locants, bridgeLengths) {
+      var substituents = [];
+      for (var node = 0; node < adjacency.length; node += 1) {
+        if (!coreSet.has(node)) continue;
+        for (var ni = 0; ni < adjacency[node].length; ni += 1) {
+          var neighbor = adjacency[node][ni];
+          if (coreSet.has(neighbor)) continue;
+          var named = nameSubstituent(adjacency, neighbor, node, memo);
+          substituents.push({
+            locant: locants.get(node),
+            name: named.name,
+            sortKey: named.sortKey
+          });
+        }
+      }
+      var bridge = bridgeLengths.slice().sort(function (a, b) { return b - a; });
+      var stem = EXTENDED_STEMS_REVERSE[core.length] || String(core.length);
+      var parent = "bicyclo[" + bridge.join(".") + "]" + stem + "ane";
+      var prefix = formatSubstituentGroups(substituents);
+      return {
+        name: prefix ? prefix + parent : parent,
+        locants: substituents.map(function (sub) { return sub.locant; }).sort(function (a, b) { return a - b; })
+      };
+    }
+
+    for (var a = 0; a < core.length; a += 1) {
+      for (var b = a + 1; b < core.length; b += 1) {
+        var paths = simplePathsWithin(adjacency, core[a], core[b], coreSet);
+        for (var p1 = 0; p1 < paths.length; p1 += 1) {
+          for (var p2 = p1 + 1; p2 < paths.length; p2 += 1) {
+            var internal2 = new Set(paths[p2].slice(1, -1));
+            if (paths[p1].slice(1, -1).some(function (node) { return internal2.has(node); })) continue;
+            for (var p3 = p2 + 1; p3 < paths.length; p3 += 1) {
+              var internal3 = new Set(paths[p3].slice(1, -1));
+              if (paths[p1].slice(1, -1).some(function (node) { return internal3.has(node); })) continue;
+              if (paths[p2].slice(1, -1).some(function (node) { return internal3.has(node); })) continue;
+              var covered = new Set(paths[p1].concat(paths[p2], paths[p3]));
+              if (covered.size !== core.length) continue;
+
+              var orderedPaths = [paths[p1], paths[p2], paths[p3]].sort(function (left, right) {
+                return right.length - left.length;
+              });
+              var longest = orderedPaths[0];
+              var second = orderedPaths[1];
+              var shortest = orderedPaths[2];
+              for (var reverse = 0; reverse < 2; reverse += 1) {
+                var primary = reverse ? longest.slice().reverse() : longest.slice();
+                var headA = primary[0];
+                var headB = primary[primary.length - 1];
+                var secondPath = second[0] === headA ? second.slice().reverse() : second.slice();
+                var shortPath = shortest[0] === headA ? shortest.slice() : shortest.slice().reverse();
+                var locants = new Map();
+                for (var pi = 0; pi < primary.length; pi += 1) locants.set(primary[pi], pi + 1);
+                var number = primary.length;
+                for (var si = 1; si < secondPath.length - 1; si += 1) {
+                  number += 1;
+                  locants.set(secondPath[si], number);
+                }
+                for (var ti = 1; ti < shortPath.length - 1; ti += 1) {
+                  number += 1;
+                  locants.set(shortPath[ti], number);
+                }
+                var bridgeLengths = [longest.length - 2, second.length - 2, shortest.length - 2];
+                candidates.push(makeName(locants, bridgeLengths));
+              }
+            }
           }
         }
       }
     }
 
-    return Array.from(seen.values());
+    candidates.sort(function (left, right) {
+      return compareNumberArrays(left.locants, right.locants) || compareStrings(left.name, right.name);
+    });
+    return candidates[0] ? candidates[0].name : "bicyclo hydrocarbon";
   }
 
-  function generateUnsaturatedAcyclicIsomers(carbonCount, bondOrder) {
-    if (!Number.isInteger(carbonCount) || carbonCount < 2 || carbonCount > MAX_CARBONS) {
-      throw new Error("Carbon count must be between 2 and " + MAX_CARBONS + ".");
+  function graphLayout(adjacency) {
+    var positions = [];
+    var radius = Math.max(65, adjacency.length * 13);
+    for (var i = 0; i < adjacency.length; i += 1) {
+      var angle = -Math.PI / 2 + i * Math.PI * 2 / adjacency.length;
+      positions.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
     }
+    return positions;
+  }
 
-    var seen = new Map();
-    var skeletons = generateAlkaneIsomers(carbonCount);
-    for (var i = 0; i < skeletons.length; i += 1) {
-      var adjacency = skeletons[i].adjacency;
-      for (var atom = 0; atom < adjacency.length; atom += 1) {
-        for (var j = 0; j < adjacency[atom].length; j += 1) {
-          var neighbor = adjacency[atom][j];
-          if (neighbor < atom || !canPlaceMultipleBond(adjacency, atom, neighbor, bondOrder)) {
-            continue;
-          }
+  var generateBicyclicIsomers = algorithmModules.bicyclic({
+    generateAlkaneIsomers: generateAlkaneIsomers,
+    adjacencyWithRingBond: adjacencyWithRingBond,
+    canonicalGraphCode: canonicalGraphCode,
+    formulaFromGraph: formulaFromGraph,
+    formatFormula: formatFormula,
+    bicyclicName: bicyclicName,
+    graphLayout: graphLayout,
+    compareStrings: compareStrings
+  });
 
-          var edgeOrders = new Map();
-          edgeOrders.set(edgeKey(atom, neighbor), bondOrder);
-          var canonical = freeCanonicalWeighted(adjacency, edgeOrders);
-          if (!seen.has(canonical)) {
-            seen.set(canonical, {
-              canonical: canonical,
-              adjacency: adjacency,
-              edgeOrders: edgeOrders,
-              multipleBond: [atom, neighbor],
-              bondOrder: bondOrder
-            });
-          }
+  var fusedAromaticIsomers = algorithmModules.fusedAromatic({
+    edgeKey: edgeKey,
+    formulaFromGraph: formulaFromGraph
+  });
+
+  var generateUnsaturatedAcyclicByBondOrder = algorithmModules.alkeneAlkyne({
+    MAX_CARBONS: MAX_CARBONS,
+    generateAlkaneIsomers: generateAlkaneIsomers,
+    canPlaceMultipleBond: canPlaceMultipleBond,
+    edgeKey: edgeKey,
+    freeCanonicalWeighted: freeCanonicalWeighted
+  });
+  var generateAlkeneIsomers = algorithmModules.alkene(generateUnsaturatedAcyclicByBondOrder);
+  var generateAlkyneIsomers = algorithmModules.alkyne(generateUnsaturatedAcyclicByBondOrder);
+
+  function allLongestChainsContainingEdges(adjacency, edges) {
+    var longest = 0;
+    var chains = [];
+    for (var start = 0; start < adjacency.length; start += 1) {
+      for (var end = start + 1; end < adjacency.length; end += 1) {
+        var path = findPath(adjacency, start, end, null);
+        if (!edges.every(function (edge) { return chainContainsEdge(path, edge); })) continue;
+        if (path.length > longest) {
+          longest = path.length;
+          chains = [path];
+        } else if (path.length === longest) {
+          chains.push(path);
         }
       }
     }
-
-    return Array.from(seen.values());
+    return chains;
   }
+
+  function buildDieneNameCandidate(adjacency, chain, doubleBonds, memo) {
+    var locants = doubleBonds.map(function (edge) {
+      return multipleBondLocant(chain, edge);
+    }).sort(function (a, b) { return a - b; });
+    var substituents = getSubstituentsForChain(adjacency, chain, memo, null);
+    var parent = (EXTENDED_STEMS_REVERSE[chain.length] || STEMS[chain.length] || String(chain.length)) +
+      "a-" + locants.join(",") + "-diene";
+    var prefix = formatSubstituentGroups(substituents);
+    return {
+      name: prefix ? prefix + parent : parent,
+      chain: chain,
+      substituents: substituents,
+      locants: locants,
+      substituentLocants: substituents.map(function (sub) { return sub.locant; }).sort(function (a, b) { return a - b; })
+    };
+  }
+
+  function compareDieneNameCandidates(a, b) {
+    return compareNumberArrays(a.locants, b.locants) ||
+      compareNumberArrays(a.substituentLocants, b.substituentLocants) ||
+      compareStrings(a.name, b.name);
+  }
+
+  var generateDieneIsomers = algorithmModules.diene({
+    generateAlkaneIsomers: generateAlkaneIsomers,
+    edgeKey: edgeKey,
+    weightedValence: weightedValence,
+    allLongestChainsContainingEdges: allLongestChainsContainingEdges,
+    buildDieneNameCandidate: buildDieneNameCandidate,
+    compareDieneNameCandidates: compareDieneNameCandidates,
+    freeCanonicalWeighted: freeCanonicalWeighted,
+    cloneAdjacency: cloneAdjacency,
+    compareStrings: compareStrings
+  });
 
   function findPath(adjacency, start, target, blocked) {
     var stack = [{ node: start, parent: -1, path: [start] }];
@@ -1287,68 +1763,14 @@
     return candidates[0];
   }
 
-  function generateAromaticIsomers(carbonCount) {
-    if (!Number.isInteger(carbonCount) || carbonCount < 6 || carbonCount > MAX_CARBONS) {
-      throw new Error("Aromatic mode supports C6 through C" + MAX_CARBONS + ".");
-    }
-
-    if (aromaticCache.has(carbonCount)) {
-      return aromaticCache.get(carbonCount);
-    }
-
-    var sideChainCarbons = carbonCount - 6;
-    if (sideChainCarbons === 0) {
-      var benzeneName = nameAromaticRing([null, null, null, null, null, null]);
-      var benzene = [{
-        canonical: "benzene",
-        name: benzeneName.name,
-        sequence: benzeneName.sequence,
-        substituents: []
-      }];
-      aromaticCache.set(carbonCount, benzene);
-      return benzene;
-    }
-
-    var options = aromaticAlkylOptions(sideChainCarbons);
-    var seen = new Map();
-
-    function walk(position, remaining, sequence) {
-      if (position === 6) {
-        if (remaining === 0) {
-          var canonical = canonicalRingToken(sequence);
-          if (!seen.has(canonical)) {
-            var naming = nameAromaticRing(sequence);
-            seen.set(canonical, {
-              canonical: canonical,
-              name: naming.name,
-              sequence: naming.sequence,
-              substituents: naming.substituents
-            });
-          }
-        }
-        return;
-      }
-
-      sequence.push(null);
-      walk(position + 1, remaining, sequence);
-      sequence.pop();
-
-      for (var i = 0; i < options.length; i += 1) {
-        if (options[i].size <= remaining) {
-          sequence.push(options[i]);
-          walk(position + 1, remaining - options[i].size, sequence);
-          sequence.pop();
-        }
-      }
-    }
-
-    walk(0, sideChainCarbons, []);
-    var result = Array.from(seen.values()).sort(function (a, b) {
-      return compareStrings(a.name, b.name);
-    });
-    aromaticCache.set(carbonCount, result);
-    return result;
-  }
+  var generateAromaticIsomers = algorithmModules.aromatic({
+    MAX_CARBONS: MAX_CARBONS,
+    aromaticCache: aromaticCache,
+    aromaticAlkylOptions: aromaticAlkylOptions,
+    nameAromaticRing: nameAromaticRing,
+    canonicalRingToken: canonicalRingToken,
+    compareStrings: compareStrings
+  });
 
   function shortSubstituentLabel(name) {
     var labels = {
@@ -1363,6 +1785,7 @@
   }
 
   function atomLabel(adjacency, atom, edgeOrders, attachments) {
+    attachments = attachments || [];
     var hydrogens = 4 - weightedValence(adjacency, atom, edgeOrders) - attachmentCountForAtom(attachments, atom);
     if (hydrogens <= 0) {
       return "C";
@@ -1594,36 +2017,122 @@
 
   function buildCycloalkaneDiagramSvg(isomer, viewMode) {
     var isBondLine = viewMode === "bondline";
-    var adjacency = isomer.adjacency || [[]];
+    var adjacency = isomer.ringBond
+      ? adjacencyWithRingBond(isomer.adjacency || [[]], isomer.ringBond)
+      : isomer.adjacency || [[]];
     var edgeOrders = isomer.edgeOrders || null;
-    var n = adjacency.length;
+    var cycleNodes = findRingNodes(adjacency);
+    var firstNeighbor = adjacency[cycleNodes[0]].filter(function (neighbor) {
+      return cycleNodes.indexOf(neighbor) !== -1;
+    })[0];
+    var cycle = orderedCycle(adjacency, cycleNodes, cycleNodes[0], firstNeighbor);
+    var centerX = 210;
+    var centerY = 170;
+    var radius = cycle.length <= 3 ? 46 : cycle.length <= 6 ? 68 : 78;
+    var positions = new Map();
+    var cycleSet = new Set(cycle);
+    var visited = new Set(cycle);
 
-    var centerX = 200, centerY = 138;
-    var radius = n <= 3 ? 55 : n <= 6 ? 65 : 58;
-    var ringPoints = [];
-    for (var i = 0; i < n; i += 1) {
-      var angle = (-90 + i * (360 / n)) * Math.PI / 180;
-      ringPoints.push({ x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius });
+    for (var i = 0; i < cycle.length; i += 1) {
+      var angle = (-90 + i * (360 / cycle.length)) * Math.PI / 180;
+      positions.set(cycle[i], {
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY + Math.sin(angle) * radius
+      });
     }
 
-    var width = n <= 3 ? 280 : n <= 6 ? 340 : 320;
-    var height = n <= 3 ? 240 : n <= 6 ? 300 : 280;
-
-    var parts = ['<svg class="' + (isBondLine ? "bondline" : "atom-view") + '" role="img" aria-label="cycloalkane ring diagram" viewBox="0 0 ' + width + ' ' + height + '">'];
-    for (var b = 0; b < n; b += 1) {
-      var next = (b + 1) % n;
-      var order = 1;
-      if (edgeOrders) {
-        var key = (b < next ? b + "-" + next : next + "-" + b);
-        order = edgeOrders.get(key) || 1;
+    function placeBranch(atom, parent, origin, direction, depth) {
+      var point = {
+        x: origin.x + Math.cos(direction) * 48,
+        y: origin.y + Math.sin(direction) * 48
+      };
+      positions.set(atom, point);
+      visited.add(atom);
+      var children = adjacency[atom].filter(function (neighbor) {
+        return neighbor !== parent && !cycleSet.has(neighbor) && !visited.has(neighbor);
+      });
+      for (var child = 0; child < children.length; child += 1) {
+        var offset = children.length === 1 ? (depth % 2 ? 0.55 : -0.55) : (child - (children.length - 1) / 2) * 0.8;
+        placeBranch(children[child], atom, point, direction + offset, depth + 1);
       }
-      parts.push(bondLineMarkup(ringPoints[b], ringPoints[next], order));
+    }
+
+    for (var ringIndex = 0; ringIndex < cycle.length; ringIndex += 1) {
+      var ringAtom = cycle[ringIndex];
+      var roots = adjacency[ringAtom].filter(function (neighbor) {
+        return !cycleSet.has(neighbor) && !visited.has(neighbor);
+      });
+      var ringPoint = positions.get(ringAtom);
+      var outward = Math.atan2(ringPoint.y - centerY, ringPoint.x - centerX);
+      for (var rootIndex = 0; rootIndex < roots.length; rootIndex += 1) {
+        var branchOffset = (rootIndex - (roots.length - 1) / 2) * 0.8;
+        placeBranch(roots[rootIndex], ringAtom, ringPoint, outward + branchOffset, 0);
+      }
+    }
+
+    var parts = ['<svg class="' + (isBondLine ? "bondline" : "atom-view") + '" role="img" aria-label="' + escapeHtml(isomer.name || "cyclic hydrocarbon") + ' structure" viewBox="0 0 420 340">'];
+    for (var atom = 0; atom < adjacency.length; atom += 1) {
+      for (var neighborIndex = 0; neighborIndex < adjacency[atom].length; neighborIndex += 1) {
+        var neighbor = adjacency[atom][neighborIndex];
+        if (neighbor <= atom) continue;
+        var order = getBondOrder(edgeOrders, atom, neighbor);
+        parts.push(bondLineMarkup(positions.get(atom), positions.get(neighbor), order));
+      }
     }
     if (!isBondLine) {
-      for (var atom = 0; atom < n; atom += 1) {
-        var hydrogens = 4 - weightedValence(adjacency, atom, edgeOrders) - attachmentCountForAtom(isomer.attachments, atom);
+      for (var labelIndex = 0; labelIndex < adjacency.length; labelIndex += 1) {
+        var hydrogens = 4 - weightedValence(adjacency, labelIndex, edgeOrders) - attachmentCountForAtom(isomer.attachments, labelIndex);
         var label = hydrogens <= 0 ? "C" : hydrogens === 1 ? "CH" : "CH" + hydrogens;
-        parts.push('<g><circle class="atom" cx="' + ringPoints[atom].x + '" cy="' + ringPoints[atom].y + '" r="22"></circle><text class="atom-label" x="' + ringPoints[atom].x + '" y="' + ringPoints[atom].y + '">' + label + "</text></g>");
+        var point = positions.get(labelIndex);
+        parts.push('<g><circle class="atom" cx="' + point.x + '" cy="' + point.y + '" r="20"></circle><text class="atom-label" x="' + point.x + '" y="' + point.y + '">' + label + "</text></g>");
+      }
+    }
+    parts.push("</svg>");
+    return parts.join("");
+  }
+
+  function buildGraphDiagramSvg(isomer, viewMode) {
+    var adjacency = isomer.adjacency || [];
+    var coordinates = isomer.coordinates || graphLayout(adjacency);
+    var width = 420;
+    var height = 300;
+    var margin = 38;
+    var minX = Math.min.apply(null, coordinates.map(function (point) { return point.x; }));
+    var maxX = Math.max.apply(null, coordinates.map(function (point) { return point.x; }));
+    var minY = Math.min.apply(null, coordinates.map(function (point) { return point.y; }));
+    var maxY = Math.max.apply(null, coordinates.map(function (point) { return point.y; }));
+    var spanX = Math.max(maxX - minX, 1);
+    var spanY = Math.max(maxY - minY, 1);
+    var scale = Math.min((width - margin * 2) / spanX, (height - margin * 2) / spanY);
+    var centerX = (minX + maxX) / 2;
+    var centerY = (minY + maxY) / 2;
+    var points = coordinates.map(function (point) {
+      return {
+        x: width / 2 + (point.x - centerX) * scale,
+        y: height / 2 + (point.y - centerY) * scale
+      };
+    });
+    var bondline = viewMode === "bondline";
+    var parts = [
+      '<svg class="' + (bondline ? "bondline" : "atom-view") + '" role="img" aria-label="' +
+      escapeHtml((isomer.name || "Hydrocarbon") + " structure") + '" viewBox="0 0 ' + width + " " + height + '">'
+    ];
+    for (var atom = 0; atom < adjacency.length; atom += 1) {
+      for (var ni = 0; ni < adjacency[atom].length; ni += 1) {
+        var neighbor = adjacency[atom][ni];
+        if (neighbor <= atom) continue;
+        parts.push(bondLineMarkup(points[atom], points[neighbor], getBondOrder(isomer.edgeOrders, atom, neighbor)));
+      }
+    }
+    if (!bondline) {
+      for (var labelIndex = 0; labelIndex < adjacency.length; labelIndex += 1) {
+        var hydrogens = 4 - weightedValence(adjacency, labelIndex, isomer.edgeOrders);
+        var label = hydrogens <= 0 ? "C" : hydrogens === 1 ? "CH" : "CH" + hydrogens;
+        parts.push(
+          '<g><circle class="atom" cx="' + points[labelIndex].x + '" cy="' + points[labelIndex].y +
+          '" r="17"></circle><text class="atom-label" x="' + points[labelIndex].x + '" y="' +
+          points[labelIndex].y + '">' + label + "</text></g>"
+        );
       }
     }
     parts.push("</svg>");
@@ -1790,6 +2299,30 @@
     if (family === "amine") {
       return carbon * 2 + 3;
     }
+    if (family === "cycloalkane") {
+      return carbon * 2;
+    }
+    if (family === "cycloalkene") {
+      return carbon * 2 - 2;
+    }
+    if (family === "diene") {
+      return carbon * 2 - 2;
+    }
+    if (family === "bicyclic") {
+      return carbon * 2 - 2;
+    }
+    if (family === "fused_aromatic") {
+      return carbon === 10 ? 8 : carbon === 14 ? 10 : null;
+    }
+    if (family === "nitrile") {
+      return carbon * 2 - 1;
+    }
+    if (family === "nitro") {
+      return carbon * 2 + 1;
+    }
+    if (family === "amide") {
+      return carbon * 2 + 1;
+    }
     return null;
   }
 
@@ -1797,8 +2330,11 @@
     if (family === "alkane") {
       return 1;
     }
-    if (family === "alkene" || family === "alkyne" || family === "cycloalkane") {
+    if (family === "alkene" || family === "alkyne") {
       return 2;
+    }
+    if (family === "cycloalkane") {
+      return 3;
     }
     if (family === "aromatic") {
       return 6;
@@ -1806,11 +2342,14 @@
     if (family === "haloalkane" || family === "alcohol") {
       return 1;
     }
-    if (family === "ester" || family === "carboxylic acid") {
+    if (family === "ester") {
       return 2;
     }
+    if (family === "carboxylic acid") {
+      return 1;
+    }
     if (family === "aldehyde") {
-      return 2;
+      return 1;
     }
     if (family === "ketone") {
       return 3;
@@ -1821,7 +2360,41 @@
     if (family === "amine") {
       return 1;
     }
+    if (family === "cycloalkene") {
+      return 4;
+    }
+    if (family === "diene") {
+      return 4;
+    }
+    if (family === "bicyclic") {
+      return 5;
+    }
+    if (family === "fused_aromatic") {
+      return 10;
+    }
+    if (family === "nitrile") {
+      return 2;
+    }
+    if (family === "nitro") {
+      return 1;
+    }
+    if (family === "amide") {
+      return 1;
+    }
     return 1;
+  }
+
+  function familyMaximumCarbon(family) {
+    if (family === "diene" || family === "cycloalkene") {
+      return 8;
+    }
+    if (family === "bicyclic") {
+      return 5;
+    }
+    if (family === "fused_aromatic") {
+      return 14;
+    }
+    return MAX_CARBONS;
   }
 
   function halogenElements(parsed) {
@@ -1831,13 +2404,27 @@
   }
 
   function hasOnlyCarbonHydrogen(parsed) {
-    return (parsed.oxygen || 0) === 0 && (parsed.halogen || 0) === 0;
+    return (parsed.oxygen || 0) === 0 &&
+      (parsed.elements.N || 0) === 0 &&
+      (parsed.halogen || 0) === 0;
   }
 
   function formulaMatchesFamily(parsed, family) {
     var expectedHydrogen = expectedHydrogenForFamily(parsed.carbon, family);
-    if (parsed.hydrogen !== expectedHydrogen) {
+    if (expectedHydrogen !== null && parsed.hydrogen !== expectedHydrogen) {
       return false;
+    }
+    if (family === "general_heteroatom") {
+      return !hasOnlyCarbonHydrogen(parsed);
+    }
+    if (family === "fused_aromatic") {
+      return hasOnlyCarbonHydrogen(parsed) &&
+        ((parsed.carbon === 10 && parsed.hydrogen === 8) ||
+         (parsed.carbon === 14 && parsed.hydrogen === 10));
+    }
+    if (family === "bicyclic") {
+      return hasOnlyCarbonHydrogen(parsed) &&
+        parsed.hydrogen === parsed.carbon * 2 - 2;
     }
     if (family === "haloalkane") {
       return parsed.halogen === 1 && parsed.oxygen === 0;
@@ -1860,6 +2447,15 @@
     if (family === "amine") {
       return (parsed.elements.N || 0) === 1 && parsed.oxygen === 0 && parsed.halogen === 0;
     }
+    if (family === "nitrile") {
+      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 0 && parsed.halogen === 0;
+    }
+    if (family === "nitro") {
+      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 2 && parsed.halogen === 0;
+    }
+    if (family === "amide") {
+      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 1 && parsed.halogen === 0;
+    }
     return hasOnlyCarbonHydrogen(parsed);
   }
 
@@ -1870,17 +2466,43 @@
     if (formulaMatchesFamily(parsed, "alcohol")) {
       return "alcohol";
     }
-    if ((parsed.elements.N || 0) === 1 && parsed.oxygen === 0 && parsed.halogen === 0 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "amine")) {
+    if (formulaMatchesFamily(parsed, "amine")) {
       return "amine";
     }
+    if (formulaMatchesFamily(parsed, "nitrile")) {
+      return "nitrile";
+    }
+    if (formulaMatchesFamily(parsed, "nitro")) {
+      return "nitro";
+    }
+    if (formulaMatchesFamily(parsed, "amide")) {
+      return "amide";
+    }
+    // Oxygen-containing family detection
+    if (parsed.oxygen > 0 && !parsed.halogen && (parsed.elements.N || 0) === 0) {
+      var expH = expectedHydrogenForFamily(parsed.carbon, "aldehyde");
+      if (parsed.oxygen === 1 && parsed.hydrogen === expH) {
+        return "aldehyde";
+      }
+      if (parsed.oxygen === 2 && parsed.hydrogen === expH) {
+        // For 1-carbon formulas, prefer carboxylic acid (esters need >= 2 carbons)
+        if (parsed.carbon === 1) return "carboxylic acid";
+        return "ester";
+      }
+      var etherH = expectedHydrogenForFamily(parsed.carbon, "ether");
+      if (parsed.oxygen === 1 && parsed.hydrogen === etherH) {
+        return "ether";
+      }
+    }
+    // Guard: formulas with heteroatoms can't be hydrocarbons
     if (!hasOnlyCarbonHydrogen(parsed)) {
-      return null;
+      return "general_heteroatom";
+    }
+    if (formulaMatchesFamily(parsed, "fused_aromatic")) {
+      return "fused_aromatic";
     }
     if (parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkane")) {
       return "alkane";
-    }
-    if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkane")) {
-      return "cycloalkane";
     }
     if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkene")) {
       return "alkene";
@@ -1891,11 +2513,24 @@
     if (parsed.carbon >= 6 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "aromatic")) {
       return "aromatic";
     }
-    return null;
+    if (parsed.carbon >= 3 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkane")) {
+      return "cycloalkane";
+    }
+    if (parsed.carbon >= 4 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkene")) {
+      return "cycloalkene";
+    }
+    if (parsed.carbon >= 4 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "diene")) {
+      return "diene";
+    }
+    // Fallback for non-standard hydrocarbons
+    if (hasOnlyCarbonHydrogen(parsed)) {
+      return "general_hydrocarbon";
+    }
+    return "general_heteroatom";
   }
 
   function unsupportedFormulaHints(parsed, family) {
-    if (parsed.carbon > MAX_CARBONS) {
+    if (parsed.carbon > MAX_CARBONS && family !== "fused_aromatic") {
       return ["Use a supported IUPAC name for one structure", "Try C12H26 or smaller", "Keep Auto mode on"];
     }
     if (family && FAMILY_INFO[family]) {
@@ -1913,9 +2548,13 @@
       ? [family]
       : parsed.halogen
       ? ["haloalkane"]
+      : parsed.oxygen && (parsed.elements.N || 0) > 0
+      ? ["alcohol", "ether", "aldehyde", "ketone", "ester", "carboxylic acid", "amide", "nitro", "nitrile"]
       : parsed.oxygen
-      ? ["alcohol"]
-      : ["alkane", "alkene", "alkyne", "aromatic"];
+      ? ["alcohol", "ether", "aldehyde", "ketone", "ester", "carboxylic acid"]
+      : (parsed.elements.N || 0) > 0
+      ? ["amine", "nitrile", "amide", "nitro"]
+      : ["alkane", "alkene", "alkyne", "aromatic", "cycloalkane", "cycloalkene", "diene"];
     var ranked = [];
     var seen = new Set();
 
@@ -1928,13 +2567,8 @@
       if (!hydrogen || hydrogen < 1) {
         continue;
       }
-      var elements = { C: parsed.carbon, H: hydrogen, O: 0, F: 0, Cl: 0, Br: 0, I: 0 };
-      if (candidateFamily === "haloalkane") {
-        var halogen = halogenElements(parsed)[0] || "Br";
-        elements[halogen] = 1;
-      } else if (candidateFamily === "alcohol") {
-        elements.O = 1;
-      }
+      var halogen = candidateFamily === "haloalkane" ? halogenElements(parsed)[0] || "Br" : null;
+      var elements = formulaElementsForFamily(parsed.carbon, hydrogen, candidateFamily, halogen);
       var formula = formatMolecularFormula(elements);
       if (seen.has(formula)) {
         continue;
@@ -1947,7 +2581,7 @@
       });
     }
 
-    if (parsed.carbon > MAX_CARBONS) {
+    if (parsed.carbon > MAX_CARBONS && family !== "fused_aromatic") {
       var fallback = formatFormula(MAX_CARBONS, expectedHydrogenForFamily(MAX_CARBONS, "alkane"));
       if (!seen.has(fallback)) {
         ranked.push({ formula: fallback, distance: parsed.carbon - MAX_CARBONS + 1, family: "alkane" });
@@ -1981,6 +2615,53 @@
     };
   }
 
+  function unsupportedFamily(parsed, dbe, family) {
+    return {
+      status: "unsupported",
+      formula: parsed.formula,
+      carbon: parsed.carbon,
+      hydrogen: parsed.hydrogen,
+      dbe: dbe,
+      family: family,
+      familyLabel: FAMILY_INFO[family].label,
+      popupTitle: "This compound family is not supported yet",
+      hints: ["Try a supported family mode", "Keep Auto mode on to identify supported structures"],
+      message: "The formula is valid for " + FAMILY_INFO[family].label.toLowerCase() +
+        ", but this app does not yet enumerate that family reliably."
+    };
+  }
+
+  function unsupportedNamedFamily(name, analysis) {
+    return {
+      status: "unsupported",
+      formula: analysis.formula,
+      family: analysis.family,
+      familyLabel: analysis.familyLabel || FAMILY_INFO[analysis.family].label,
+      popupTitle: "This compound family is not supported yet",
+      hints: ["Try a supported example from the carousel", "Keep Auto mode on to identify supported structures"],
+      message: '"' + name + '" is recognized as a ' + FAMILY_INFO[analysis.family].label.toLowerCase() +
+        ", but this app does not yet enumerate that family reliably."
+    };
+  }
+
+  function formulaElementsForFamily(carbon, hydrogen, family, halogen) {
+    var elements = { C: carbon, H: hydrogen, N: 0, Br: 0, Cl: 0, F: 0, I: 0, O: 0 };
+    if (family === "haloalkane") {
+      elements[halogen || "Br"] = 1;
+    } else if (family === "alcohol" || family === "ether" || family === "aldehyde" || family === "ketone") {
+      elements.O = 1;
+    } else if (family === "ester" || family === "carboxylic acid" || family === "nitro") {
+      elements.O = 2;
+      if (family === "nitro") elements.N = 1;
+    } else if (family === "amine" || family === "nitrile") {
+      elements.N = 1;
+    } else if (family === "amide") {
+      elements.N = 1;
+      elements.O = 1;
+    }
+    return elements;
+  }
+
   function analyzeFormula(input, selectedFamily) {
     var parsed;
     try {
@@ -1990,7 +2671,7 @@
     }
 
     var maxHydrogen = parsed.carbon * 2 + 2;
-    var dbeNumerator = maxHydrogen - parsed.hydrogen - (parsed.halogen || 0);
+    var dbeNumerator = maxHydrogen - parsed.hydrogen - (parsed.halogen || 0) + (parsed.elements.N || 0);
 
     if (dbeNumerator < 0) {
       var saturatedSuggestions = formulaSuggestions(parsed, selectedFamily);
@@ -2000,7 +2681,7 @@
         popupTitle: "That formula does not exist as written",
         suggestions: saturatedSuggestions,
         suggestionLabel: saturatedSuggestions.length ? "Did you mean one of these formulas?" : "",
-        message: parsed.formula + " has more hydrogens than a valid neutral hydrocarbon can hold."
+        message: parsed.formula + " has more hydrogens than a valid neutral compound can hold."
       };
     }
 
@@ -2047,7 +2728,7 @@
       );
     }
 
-    if (parsed.carbon > MAX_CARBONS) {
+    if (parsed.carbon > MAX_CARBONS && family !== "fused_aromatic") {
       return unsupportedFormula(
         parsed,
         dbe,
@@ -2056,6 +2737,20 @@
           MAX_CARBONS +
           ". Larger formulas grow quickly and need a heavier cheminformatics backend."
       );
+    }
+
+    if (parsed.carbon > familyMaximumCarbon(family)) {
+      return unsupportedFormula(
+        parsed,
+        dbe,
+        family,
+        FAMILY_INFO[family].label + " enumeration is currently bounded to C" +
+          familyMaximumCarbon(family) + " to keep results exact and responsive."
+      );
+    }
+
+    if (!ENUMERATED_FAMILIES[family]) {
+      return unsupportedFamily(parsed, dbe, family);
     }
 
     var isomers = [];
@@ -2076,7 +2771,10 @@
       });
     } else if (family === "alkene" || family === "alkyne") {
       var bondOrder = family === "alkene" ? 2 : 3;
-      isomers = generateUnsaturatedAcyclicIsomers(parsed.carbon, bondOrder).map(function (isomer) {
+      var unsaturatedIsomers = family === "alkene"
+        ? generateAlkeneIsomers(parsed.carbon)
+        : generateAlkyneIsomers(parsed.carbon);
+      isomers = unsaturatedIsomers.map(function (isomer) {
         var naming = nameUnsaturatedAcyclic(isomer.adjacency, isomer.multipleBond, bondOrder);
         return {
           family: family,
@@ -2117,16 +2815,17 @@
       }
     } else if (family === "cycloalkane") {
       isomers = generateCycloalkaneIsomers(parsed.carbon).map(function (isomer) {
-        var naming = nameAlkane(isomer.adjacency);
+        var cyclicAdjacency = adjacencyWithRingBond(isomer.adjacency, isomer.ringBond);
+        var naming = nameCycloalkaneGraph(cyclicAdjacency);
         return {
           family: family,
           canonical: isomer.canonical,
           adjacency: isomer.adjacency,
           edgeOrders: isomer.edgeOrders,
           ringBond: isomer.ringBond,
-          name: "cyclo" + naming.name,
+          name: naming.name,
           commonNames: [],
-          chain: naming.chain,
+          chain: null,
           substituents: naming.substituents
         };
       });
@@ -2143,26 +2842,11 @@
       });
     } else if (family === "haloalkane") {
       var halogen = halogenElements(parsed)[0];
-      isomers = generateMonosubstitutedAlkaneIsomers(parsed.carbon, {
-        kind: "haloalkane",
-        element: halogen,
-        label: halogen,
-        hydrogens: 0
-      });
+      isomers = generateHaloalkaneIsomers(parsed.carbon, halogen);
     } else if (family === "alcohol") {
-      isomers = generateMonosubstitutedAlkaneIsomers(parsed.carbon, {
-        kind: "alcohol",
-        element: "O",
-        label: "OH",
-        hydrogens: 1
-      });
+      isomers = generateAlcoholIsomers(parsed.carbon);
     } else if (family === "amine") {
-      isomers = generateMonosubstitutedAlkaneIsomers(parsed.carbon, {
-        kind: "amine",
-        element: "N",
-        label: "NH\u2082",
-        hydrogens: 2
-      });
+      isomers = generateAmineIsomers(parsed.carbon);
     } else if (family === "aldehyde" || family === "ketone" || family === "ester" || family === "carboxylic acid" || family === "ether") {
       // Generate positional isomers by varying the attachment point on alkane skeletons
       var skeletons = generateAlkaneIsomers(parsed.carbon);
@@ -2193,11 +2877,102 @@
         }
       }
       isomers = Array.from(seenIsomers.values());
+    } else if (family === "cycloalkene") {
+      isomers = generateCycloalkeneIsomers(parsed.carbon);
+    } else if (family === "diene") {
+      isomers = generateDieneIsomers(parsed.carbon);
+    } else if (family === "bicyclic") {
+      isomers = generateBicyclicIsomers(parsed.carbon);
+    } else if (family === "fused_aromatic") {
+      isomers = fusedAromaticIsomers(parsed.carbon);
+    } else if (family === "nitrile") {
+      var ns = generateAlkaneIsomers(parsed.carbon);
+      var nSeen = new Map();
+      for (var ni = 0; ni < ns.length; ni += 1) {
+        var na = ns[ni].adjacency;
+        for (var nni = 0; nni < na.length; nni += 1) {
+          if (weightedValence(na, nni, null) >= 4) continue;
+          var nCanon = "nitrile:" + nni + ":" + freeCanonical(na);
+          if (nSeen.has(nCanon)) continue;
+          var nAtts = [{ atom: nni, element: "N", label: "CN", kind: "nitrile", hydrogens: 0 }];
+          var nForm = formulaFromDerivativeGraph(na, nAtts, null);
+          var nStem = nameAlkane(na).name.replace(/ane$/, "").replace(/^\d+-/, "");
+          nSeen.set(nCanon, {
+            family: "nitrile", canonical: nCanon, adjacency: cloneAdjacency(na),
+            edgeOrders: null, attachments: nAtts,
+            name: nStem + "nitrile", commonNames: [],
+            chain: nameAlkane(na).chain, substituents: nameAlkane(na).substituents,
+            formula: nForm.formula
+          });
+        }
+      }
+      isomers = Array.from(nSeen.values());
+    } else if (family === "nitro") {
+      var ns2 = generateAlkaneIsomers(parsed.carbon);
+      var nSeen2 = new Map();
+      for (var ni2 = 0; ni2 < ns2.length; ni2 += 1) {
+        var na2 = ns2[ni2].adjacency;
+        for (var nni2 = 0; nni2 < na2.length; nni2 += 1) {
+          if (weightedValence(na2, nni2, null) >= 4) continue;
+          var nCanon2 = "nitro:" + nni2 + ":" + freeCanonical(na2);
+          if (nSeen2.has(nCanon2)) continue;
+          var nAtts2 = [{ atom: nni2, element: "N", label: "NO₂", kind: "nitro", hydrogens: 0 }];
+          var nForm2 = formulaFromDerivativeGraph(na2, nAtts2, null);
+          var nStem2 = nameAlkane(na2).name.replace(/ane$/, "").replace(/^\d+-/, "");
+          nSeen2.set(nCanon2, {
+            family: "nitro", canonical: nCanon2, adjacency: cloneAdjacency(na2),
+            edgeOrders: null, attachments: nAtts2,
+            name: (nni2 + 1) + "-nitro" + nStem2 + "ane", commonNames: [],
+            chain: nameAlkane(na2).chain, substituents: nameAlkane(na2).substituents,
+            formula: nForm2.formula
+          });
+        }
+      }
+      isomers = Array.from(nSeen2.values());
+    } else if (family === "amide") {
+      var ns3 = generateAlkaneIsomers(parsed.carbon);
+      var nSeen3 = new Map();
+      for (var ni3 = 0; ni3 < ns3.length; ni3 += 1) {
+        var na3 = ns3[ni3].adjacency;
+        for (var nni3 = 0; nni3 < na3.length; nni3 += 1) {
+          if (weightedValence(na3, nni3, null) >= 4) continue;
+          var nCanon3 = "amide:" + nni3 + ":" + freeCanonical(na3);
+          if (nSeen3.has(nCanon3)) continue;
+          var nAtts3 = [{ atom: nni3, element: "N", label: "CONH₂", kind: "amide", hydrogens: 1 }];
+          var nForm3 = formulaFromDerivativeGraph(na3, nAtts3, null);
+          var nStem3 = nameAlkane(na3).name.replace(/ane$/, "").replace(/^\d+-/, "");
+          nSeen3.set(nCanon3, {
+            family: "amide", canonical: nCanon3, adjacency: cloneAdjacency(na3),
+            edgeOrders: null, attachments: nAtts3,
+            name: nStem3 + "anamide", commonNames: [],
+            chain: nameAlkane(na3).chain, substituents: nameAlkane(na3).substituents,
+            formula: nForm3.formula
+          });
+        }
+      }
+      isomers = Array.from(nSeen3.values());
+    } else if (family === "general_hydrocarbon") {
+      isomers = generateGeneralHeteroatomIsomers(parsed.carbon, [], parsed.dbe || 0);
+    } else if (family === "general_heteroatom") {
+      var he = [];
+      if (parsed.oxygen > 0) he.push({ element: "O", label: "O", kind: "hetero", hydrogens: 0 });
+      if ((parsed.elements.N || 0) > 0) he.push({ element: "N", label: "N", kind: "hetero", hydrogens: 0 });
+      if ((parsed.elements.F || 0) > 0) he.push({ element: "F", label: "F", kind: "hetero", hydrogens: 0 });
+      if ((parsed.elements.Cl || 0) > 0) he.push({ element: "Cl", label: "Cl", kind: "hetero", hydrogens: 0 });
+      if ((parsed.elements.Br || 0) > 0) he.push({ element: "Br", label: "Br", kind: "hetero", hydrogens: 0 });
+      if ((parsed.elements.I || 0) > 0) he.push({ element: "I", label: "I", kind: "hetero", hydrogens: 0 });
+      isomers = generateGeneralHeteroatomIsomers(parsed.carbon, he, parsed.dbe || 0);
     }
 
     isomers.sort(function (a, b) {
       return compareStrings(a.name, b.name);
     });
+
+    if (!isomers.length || isomers.some(function (isomer) {
+      return isomer.formula && isomer.formula !== parsed.formula;
+    })) {
+      return unsupportedFamily(parsed, dbe, family);
+    }
 
     return {
       status: "ok",
@@ -2477,6 +3252,10 @@
     });
   }
 
+  function cloneEdgeOrders(edgeOrders) {
+    return edgeOrders ? new Map(edgeOrders) : null;
+  }
+
   function straightChainDerivativeName(carbonCount, locant, attachment) {
     if (attachment.kind === "alcohol") {
       if (carbonCount === 1) {
@@ -2498,6 +3277,16 @@
       return "ethanol";
     }
     return ALKANE_NAMES[chainLength].replace(/e$/, "") + "-" + locant + "-ol";
+  }
+
+  function amineParentName(chainLength, locant) {
+    if (chainLength === 1) {
+      return "methanamine";
+    }
+    if (chainLength === 2) {
+      return "ethanamine";
+    }
+    return ALKANE_NAMES[chainLength].replace(/e$/, "") + "-" + locant + "-amine";
   }
 
   function compareDerivativeNameCandidates(a, b) {
@@ -2523,6 +3312,9 @@
     if (attachment.kind === "alcohol") {
       var prefix = formatSubstituentGroups(substituents);
       name = (prefix ? prefix : "") + alcoholParentName(chain.length, locant);
+    } else if (attachment.kind === "amine") {
+      var aminePrefix = formatSubstituentGroups(substituents);
+      name = (aminePrefix ? aminePrefix : "") + amineParentName(chain.length, locant);
     } else {
       groups.push({
         locant: locant,
@@ -2567,50 +3359,323 @@
     return candidates[0] ? candidates[0].name : attachment.label + " derivative of " + nameAlkane(adjacency).name;
   }
 
-  function generateMonosubstitutedAlkaneIsomers(carbonCount, attachment) {
+    function findRingNodes(adjacency) {
+    // Find which nodes belong to a cycle using a simple degree-peeling (Kahn-like) approach.
+    var degree = adjacency.map(function (neighbors) {
+      return neighbors.length;
+    });
+    var queue = [];
+    for (var fi = 0; fi < degree.length; fi += 1) {
+      if (degree[fi] <= 1) queue.push(fi);
+    }
+    while (queue.length > 0) {
+      var node = queue.shift();
+      for (var fi2 = 0; fi2 < adjacency[node].length; fi2 += 1) {
+        var neighbor = adjacency[node][fi2];
+        degree[neighbor] -= 1;
+        if (degree[neighbor] === 1) queue.push(neighbor);
+      }
+    }
+    // Remaining nodes with degree > 1 are in cycles
+    var result = [];
+    for (var fi3 = 0; fi3 < degree.length; fi3 += 1) {
+      if (degree[fi3] > 1) result.push(fi3);
+    }
+    if (result.length === 0) {
+      // For a monocyclic graph all nodes have degree >= 2, so all are ring nodes
+      for (var fi4 = 0; fi4 < degree.length; fi4 += 1) {
+        if (degree[fi4] >= 2) result.push(fi4);
+      }
+    }
+    return result;
+  }
+
+  function cycloalkaneName(adjacency) {
+    // Name based on carbon count in the ring
+    var carbonCount = adjacency.length;
+    var stem = EXTENDED_STEMS_REVERSE[carbonCount];
+    if (!stem) stem = carbonCount + "";
+    return "cyclo" + stem + "ane";
+  }
+
+  function cycloalkeneName(adjacency, doubleBond) {
+    var carbonCount = adjacency.length;
+    var stem = (typeof EXTENDED_STEMS_REVERSE !== "undefined" && EXTENDED_STEMS_REVERSE) ? EXTENDED_STEMS_REVERSE[carbonCount] : null;
+    if (!stem) stem = carbonCount + "";
+    var locant = Math.min(doubleBond[0], doubleBond[1]) + 1;
+    return "cyclo" + stem + "-" + locant + "-ene";
+  }
+
+  function dieneName(adjacency, doubleBonds) {
+    var carbonCount = adjacency.length;
+    var stem = (typeof EXTENDED_STEMS_REVERSE !== "undefined" && EXTENDED_STEMS_REVERSE) ? EXTENDED_STEMS_REVERSE[carbonCount] : null;
+    if (!stem) stem = carbonCount + "";
+    var locants = doubleBonds.map(function (bond) {
+      return Math.min(bond[0], bond[1]) + 1;
+    });
+    locants.sort(function (a, b) { return a - b; });
+    return stem + "-" + locants.join(",") + "-diene";
+  }
+
+  function generalHydrocarbonName(adjacency, edgeOrders) {
+    var carbonCount = adjacency.length;
+    var stem = (typeof EXTENDED_STEMS_REVERSE !== "undefined" && EXTENDED_STEMS_REVERSE) ? EXTENDED_STEMS_REVERSE[carbonCount] : null;
+    if (!stem) stem = carbonCount + "";
+    var dbe = 0;
+    var dbeFromRings = findRingNodes(adjacency).length > 0 ? 1 : 0;
+    if (dbeFromRings > 0) {
+      var degreeSum = 0;
+      for (var gi = 0; gi < adjacency.length; gi += 1) {
+        degreeSum += adjacency[gi].length;
+      }
+      dbe = degreeSum / 2 - adjacency.length + 1;
+    }
+    var multipleBondCount = countMultipleBonds(edgeOrders);
+    dbe += multipleBondCount;
+    if (dbe === 0) return stem + "ane";
+    if (dbe === 1 && multipleBondCount === 1) {
+      if (dbeFromRings > 0) return "cyclo" + stem + "ane";
+      return stem + "ene";
+    }
+    if (dbe === 2 && multipleBondCount === 2) {
+      return stem + "diene";
+    }
+    if (dbe >= 1 && multipleBondCount === 0) {
+      var ringCount = dbe;
+      if (ringCount === 1) return "cyclo" + stem + "ane";
+      return stem + " (" + ringCount + "-ring hydrocarbon)";
+    }
+return stem + " (DBE=" + dbe + ")";
+  }
+
+    function generateGeneralHeteroatomIsomers(carbonCount, hetAtoms, dbe) {
     if (!Number.isInteger(carbonCount) || carbonCount < 1 || carbonCount > MAX_CARBONS) {
       throw new Error("Carbon count must be between 1 and " + MAX_CARBONS + ".");
     }
 
+    // Flatten hetAtoms into individual attachment specs
+    var attachments = [];
+    for (var hi = 0; hi < hetAtoms.length; hi += 1) {
+      var ha = hetAtoms[hi];
+      attachments.push({
+        element: ha.element,
+        label: ha.label || ha.element,
+        kind: ha.kind || "hetero",
+        hydrogens: ha.hydrogens || 0
+      });
+    }
+
+    // If no heteroatoms, generate general hydrocarbon isomers
+    if (attachments.length === 0) {
+      return generateGeneralHydrocarbonIsomers(carbonCount, dbe || 0);
+    }
+
     var seen = new Map();
     var skeletons = generateAlkaneIsomers(carbonCount);
-    for (var i = 0; i < skeletons.length; i += 1) {
-      var adjacency = skeletons[i].adjacency;
-      for (var atom = 0; atom < adjacency.length; atom += 1) {
-        if (weightedValence(adjacency, atom, null) >= 4) {
-          continue;
+
+    for (var si = 0; si < skeletons.length; si += 1) {
+      var adjacency = skeletons[si].adjacency;
+
+      // Use backtracking to place all attachments on distinct atoms
+      var walk = function walkImpl(pos, atomPositions) {
+        if (pos === attachments.length) {
+          var atts = [];
+          for (var ai = 0; ai < attachments.length; ai += 1) {
+            var atomIndex = atomPositions[ai];
+            if (weightedValence(adjacency, atomIndex, null) + attachmentCountForAtom(atts, atomIndex) >= 4) {
+              return;
+            }
+            atts.push({
+              atom: atomIndex,
+              element: attachments[ai].element,
+              label: attachments[ai].label,
+              kind: attachments[ai].kind,
+              hydrogens: attachments[ai].hydrogens
+            });
+          }
+
+          var canonical = derivativeCanonicalWithAttachments(adjacency, atts);
+          if (!seen.has(canonical)) {
+            var formulaInfo = formulaFromDerivativeGraph(adjacency, atts, null);
+            var parentName = nameAlkane(adjacency).name;
+            var labelParts = [];
+            for (var li = 0; li < atts.length; li += 1) {
+              var lbl = atts[li].label;
+              var posi = atts[li].atom + 1;
+              labelParts.push(posi + "-" + lbl);
+            }
+            var displayName = labelParts.join(",") + " " + parentName;
+
+            seen.set(canonical, {
+              family: "general_heteroatom",
+              canonical: canonical,
+              adjacency: cloneAdjacency(adjacency),
+              edgeOrders: null,
+              attachments: atts,
+              name: displayName,
+              commonNames: [],
+              chain: nameAlkane(adjacency).chain,
+              substituents: nameAlkane(adjacency).substituents,
+              formula: formulaInfo.formula
+            });
+          }
+          return;
         }
-        var canonical = derivativeCanonical(adjacency, atom, attachment);
-        if (seen.has(canonical)) {
-          continue;
+        var start = pos === 0 ? 0 : atomPositions[pos - 1] + 1;
+        for (var ai2 = start; ai2 < adjacency.length; ai2 += 1) {
+          atomPositions[pos] = ai2;
+          walk(pos + 1, atomPositions);
         }
-        var attachments = [{
-          atom: atom,
-          element: attachment.element,
-          label: attachment.label,
-          kind: attachment.kind,
-          hydrogens: attachment.hydrogens || 0
-        }];
-        var formulaInfo = formulaFromDerivativeGraph(adjacency, attachments, null);
-        seen.set(canonical, {
-          family: attachment.kind === "alcohol" ? "alcohol" : "haloalkane",
-          canonical: canonical,
-          adjacency: cloneAdjacency(adjacency),
-          edgeOrders: null,
-          attachments: attachments,
-          name: derivativeName(adjacency, atom, attachment),
-          commonNames: [],
-          chain: nameAlkane(adjacency).chain,
-          substituents: nameAlkane(adjacency).substituents,
-          formula: formulaInfo.formula
-        });
       }
+
+      walk(0, []);
     }
 
     return Array.from(seen.values()).sort(function (a, b) {
       return compareStrings(a.name, b.name);
     });
   }
+
+  function generateGeneralHydrocarbonIsomers(carbonCount, targetDbe) {
+    if (!Number.isInteger(carbonCount) || carbonCount < 1 || carbonCount > MAX_CARBONS) {
+      throw new Error("Carbon count must be between 1 and " + MAX_CARBONS + ".");
+    }
+
+    var cacheKey = carbonCount + ":" + targetDbe;
+    if (GENERAL_HYDROCARBON_CACHE.data[cacheKey]) {
+      return GENERAL_HYDROCARBON_CACHE.data[cacheKey];
+    }
+
+    var seen = new Map();
+    var skeletons = generateAlkaneIsomers(carbonCount);
+
+    for (var si = 0; si < skeletons.length; si += 1) {
+      var adjacency = skeletons[si].adjacency;
+
+      var edges = [];
+      for (var a = 0; a < adjacency.length; a += 1) {
+        for (var b = a + 1; b < adjacency.length; b += 1) {
+          if (adjacency[a].indexOf(b) !== -1) {
+            edges.push([a, b]);
+          }
+        }
+      }
+
+      var possibleEdges = [];
+      for (var a2 = 0; a2 < adjacency.length; a2 += 1) {
+        for (var b2 = a2 + 1; b2 < adjacency.length; b2 += 1) {
+          if (adjacency[a2].indexOf(b2) === -1) {
+            possibleEdges.push([a2, b2]);
+          }
+        }
+      }
+
+      if (targetDbe <= edges.length) {
+        generateMultipleBondCombinations(adjacency, edges, targetDbe, seen);
+      }
+
+      if (targetDbe > 0 && possibleEdges.length > 0) {
+        generateRingCombinations(adjacency, possibleEdges, targetDbe, seen);
+      }
+    }
+
+    var result = Array.from(seen.values()).sort(function (a, b) {
+      return compareStrings(a.name, b.name);
+    });
+
+    GENERAL_HYDROCARBON_CACHE.data[cacheKey] = result;
+    return result;
+  }
+
+  function generateMultipleBondCombinations(adjacency, edges, targetCount, seen) {
+    function recurse(idx, edgeOrders) {
+      if (idx === edges.length) {
+        if (countMultipleBonds(edgeOrders) === targetCount) {
+          var isValid = true;
+          for (var vi = 0; vi < adjacency.length; vi += 1) {
+            if (weightedValence(adjacency, vi, edgeOrders) > 4) {
+              isValid = false;
+              break;
+            }
+          }
+          if (isValid) {
+            var canonical = freeCanonicalWeighted(adjacency, edgeOrders);
+            if (!seen.has(canonical)) {
+              seen.set(canonical, {
+                family: "general_hydrocarbon",
+                canonical: canonical,
+                adjacency: cloneAdjacency(adjacency),
+                edgeOrders: cloneEdgeOrders(edgeOrders),
+                name: generalHydrocarbonName(adjacency, edgeOrders),
+                commonNames: [],
+                chain: null,
+                substituents: []
+              });
+            }
+          }
+        }
+        return;
+      }
+      // Option 1: skip this edge (single bond)
+      recurse(idx + 1, edgeOrders);
+      // Option 2: make this edge a double bond
+      var edgeOrders2 = cloneEdgeOrders(edgeOrders);
+      if (!edgeOrders2) edgeOrders2 = new Map();
+      edgeOrders2.set(edgeKey(edges[idx][0], edges[idx][1]), 2);
+      recurse(idx + 1, edgeOrders2);
+    }
+    recurse(0, null);
+  }
+
+  function generateRingCombinations(adjacency, possibleEdges, targetDbe, seen) {
+    function recurse(idx, adj, edgeOrders) {
+      if (idx === possibleEdges.length) {
+        // Check if graph is now cyclic
+        var ringNodes = findRingNodes(adj);
+        if (ringNodes.length > 0) {
+          var canonical = freeCanonicalWeighted(adj, edgeOrders);
+          if (!seen.has(canonical)) {
+            seen.set(canonical, {
+              family: "general_hydrocarbon",
+              canonical: canonical,
+              adjacency: cloneAdjacency(adj),
+              edgeOrders: cloneEdgeOrders(edgeOrders),
+              name: generalHydrocarbonName(adj, edgeOrders),
+              commonNames: [],
+              chain: null,
+              substituents: []
+            });
+          }
+        }
+        return;
+      }
+      // Skip this edge (don't add a ring)
+      recurse(idx + 1, adj, edgeOrders);
+      // Add this edge (form a ring)
+      var edge = possibleEdges[idx];
+      var newAdj = cloneAdjacency(adj);
+      newAdj[edge[0]].push(edge[1]);
+      newAdj[edge[1]].push(edge[0]);
+      var newOrders = cloneEdgeOrders(edgeOrders);
+      recurse(idx + 1, newAdj, newOrders);
+    }
+    recurse(0, cloneAdjacency(adjacency), null);
+  }
+
+  var generateMonosubstitutedAlkaneIsomers = algorithmModules.substitutedAlkane({
+    MAX_CARBONS: MAX_CARBONS,
+    generateAlkaneIsomers: generateAlkaneIsomers,
+    weightedValence: weightedValence,
+    derivativeCanonical: derivativeCanonical,
+    formulaFromDerivativeGraph: formulaFromDerivativeGraph,
+    cloneAdjacency: cloneAdjacency,
+    derivativeName: derivativeName,
+    nameAlkane: nameAlkane,
+    compareStrings: compareStrings
+  });
+  var generateHaloalkaneIsomers = algorithmModules.haloalkane(generateMonosubstitutedAlkaneIsomers);
+  var generateAlcoholIsomers = algorithmModules.alcohol(generateMonosubstitutedAlkaneIsomers);
+  var generateAmineIsomers = algorithmModules.amine(generateMonosubstitutedAlkaneIsomers);
 
   function linearAdjacency(carbonCount) {
     var adjacency = [];
@@ -3326,11 +4391,11 @@
       loose: new Map(),
       entries: []
     };
-    var families = ["alkane", "alkene", "alkyne", "cycloalkane", "aromatic"];
+    var families = ["alkane", "alkene", "alkyne", "cycloalkane", "cycloalkene", "diene", "bicyclic", "aromatic", "fused_aromatic"];
 
     for (var f = 0; f < families.length; f += 1) {
       var family = families[f];
-      for (var carbon = familyMinimumCarbon(family); carbon <= MAX_CARBONS; carbon += 1) {
+      for (var carbon = familyMinimumCarbon(family); carbon <= familyMaximumCarbon(family); carbon += 1) {
         var hydrogen = expectedHydrogenForFamily(carbon, family);
         if (hydrogen < 1) {
           continue;
@@ -4024,6 +5089,9 @@
             parsed.queryName = String(input || "").trim();
             parsed.matchedName = String(input || "").trim();
           }
+          if (parsed.status === "ok" && parsed.family && !ENUMERATED_FAMILIES[parsed.family]) {
+            return unsupportedNamedFamily(String(input || "").trim(), parsed);
+          }
           if (selectedFamily && selectedFamily !== "auto" && parsed.family !== selectedFamily) {
             return {
               status: "unsupported",
@@ -4108,13 +5176,10 @@
     return analyzeName(input, selectedFamily);
   }
 
-  function metric(label, value) {
-    return '<div class="metric"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + "</strong></div>";
-  }
-
   function molecule3DModel(isomer) {
     var atoms = [];
     var bonds = [];
+    var positions = new Map();
 
     function addAtom(element, x, y, z, label) {
       atoms.push({ element: element, x: x, y: y, z: z, label: label || element });
@@ -4125,244 +5190,296 @@
       bonds.push({ from: from, to: to, order: order || 1 });
     }
 
-    if (isomer.family === "aromatic") {
-      var centerRadius = 1.35;
-      var sequence = isomer.sequence || [null, null, null, null, null, null];
-      var ringIndexes = [];
-      for (var r = 0; r < 6; r += 1) {
-        var angle = (-90 + r * 60) * Math.PI / 180;
-        ringIndexes.push(addAtom("C", Math.cos(angle) * centerRadius, Math.sin(angle) * centerRadius, 0, "C"));
-      }
-      for (var rb = 0; rb < 6; rb += 1) {
-        addBond(ringIndexes[rb], ringIndexes[(rb + 1) % 6], rb % 2 === 0 ? 2 : 1);
-      }
-      for (var s = 0; s < sequence.length; s += 1) {
-        var sub = sequence[s];
-        var subCarbonCount = sub ? (sub.carbonCount || sub.size || 0) : 0;
-        if (!sub || !subCarbonCount) {
-          continue;
+    function addCarbonHydrogens(carbonIndexes) {
+        var candidates = [
+          { x: 1, y: 1, z: 1 }, { x: 1, y: -1, z: -1 },
+          { x: -1, y: 1, z: -1 }, { x: -1, y: -1, z: 1 },
+          { x: 1, y: -1, z: 1 }, { x: -1, y: 1, z: 1 },
+          { x: 1, y: 1, z: -1 }, { x: -1, y: -1, z: -1 }
+        ];
+        for (var ci = 0; ci < carbonIndexes.length; ci += 1) {
+          var carbonIndex = carbonIndexes[ci];
+          var carbon = atoms[carbonIndex];
+          var valence = 0;
+          var usedDirections = [];
+          for (var bi = 0; bi < bonds.length; bi += 1) {
+            var bond = bonds[bi];
+            if (bond.from !== carbonIndex && bond.to !== carbonIndex) continue;
+            valence += bond.order || 1;
+            var other = atoms[bond.from === carbonIndex ? bond.to : bond.from];
+            var dx = other.x - carbon.x;
+            var dy = other.y - carbon.y;
+            var dz = other.z - carbon.z;
+            var length = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            usedDirections.push({ x: dx / length, y: dy / length, z: dz / length });
+          }
+          var hydrogenCount = Math.max(0, Math.floor(4 - valence));
+          for (var hi = 0; hi < hydrogenCount; hi += 1) {
+            var best = null;
+            var bestScore = Infinity;
+            for (var di = 0; di < candidates.length; di += 1) {
+              var direction = candidates[di];
+              var magnitude = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+              var unit = { x: direction.x / magnitude, y: direction.y / magnitude, z: direction.z / magnitude };
+              var score = -Infinity;
+              for (var ui = 0; ui < usedDirections.length; ui += 1) {
+                var used = usedDirections[ui];
+                score = Math.max(score, unit.x * used.x + unit.y * used.y + unit.z * used.z);
+              }
+              if (!usedDirections.length) score = 0;
+              if (score < bestScore) {
+                best = unit;
+                bestScore = score;
+              }
+            }
+            if (!best) continue;
+            usedDirections.push(best);
+            var hydrogenIndex = addAtom(
+              "H",
+              carbon.x + best.x * 0.9,
+              carbon.y + best.y * 0.9,
+              carbon.z + best.z * 0.9,
+              "H"
+            );
+            addBond(carbonIndex, hydrogenIndex, 1);
+          }
         }
-        var base = atoms[ringIndexes[s]];
-        var outward = { x: base.x, y: base.y, z: 0 };
-        var length = Math.sqrt(outward.x * outward.x + outward.y * outward.y) || 1;
-        outward.x /= length;
-        outward.y /= length;
-        var previous = ringIndexes[s];
-        for (var sc = 0; sc < subCarbonCount; sc += 1) {
-          var next = addAtom("C", base.x + outward.x * (1.05 + sc * 1.15), base.y + outward.y * (1.05 + sc * 1.15), sc % 2 ? 0.28 : -0.18, "C");
-          addBond(previous, next, 1);
-          previous = next;
+    }
+
+    if (isomer.family === "bicyclic" || isomer.family === "fused_aromatic") {
+      var graph = isomer.adjacency || [];
+      var graphCoordinates = isomer.coordinates || graphLayout(graph);
+      var totalBondLength = 0;
+      var bondCount = 0;
+      for (var ga = 0; ga < graph.length; ga += 1) {
+        for (var gb = 0; gb < graph[ga].length; gb += 1) {
+          var gn = graph[ga][gb];
+          if (gn <= ga) continue;
+          var gx = graphCoordinates[ga].x - graphCoordinates[gn].x;
+          var gy = graphCoordinates[ga].y - graphCoordinates[gn].y;
+          totalBondLength += Math.sqrt(gx * gx + gy * gy);
+          bondCount += 1;
         }
       }
+      var graphScale = bondCount ? 1.45 / (totalBondLength / bondCount) : 1;
+      var graphCarbonIndexes = [];
+      for (var gc = 0; gc < graph.length; gc += 1) {
+        graphCarbonIndexes[gc] = addAtom(
+          "C",
+          graphCoordinates[gc].x * graphScale,
+          graphCoordinates[gc].y * graphScale,
+          0,
+          "C"
+        );
+      }
+      for (var ge = 0; ge < graph.length; ge += 1) {
+        for (var gj = 0; gj < graph[ge].length; gj += 1) {
+          var graphNeighbor = graph[ge][gj];
+          if (graphNeighbor > ge) {
+            addBond(
+              graphCarbonIndexes[ge],
+              graphCarbonIndexes[graphNeighbor],
+              getBondOrder(isomer.edgeOrders, ge, graphNeighbor)
+            );
+          }
+        }
+      }
+      addCarbonHydrogens(graphCarbonIndexes);
       return { atoms: atoms, bonds: bonds };
+    }
+
+    if (isomer.family === "aromatic") {
+        var centerRadius = 1.35;
+        var sequence = isomer.sequence || [null, null, null, null, null, null];
+        var ringIndexes = [];
+        for (var r = 0; r < 6; r += 1) {
+          var angle = (-90 + r * 60) * Math.PI / 180;
+          ringIndexes.push(addAtom("C", Math.cos(angle) * centerRadius, Math.sin(angle) * centerRadius, 0, "C"));
+        }
+        for (var rb = 0; rb < 6; rb += 1) {
+          var nextRingAtom = (rb + 1) % 6;
+          addBond(ringIndexes[rb], ringIndexes[nextRingAtom], rb % 2 === 0 ? 2 : 1);
+        }
+        for (var s = 0; s < sequence.length; s += 1) {
+          var sub = sequence[s];
+          var subCarbonCount = sub ? (sub.carbonCount || sub.size || 0) : 0;
+          if (!sub || !subCarbonCount) continue;
+          var base = atoms[ringIndexes[s]];
+          var length = Math.sqrt(base.x * base.x + base.y * base.y) || 1;
+          var outward = { x: base.x / length, y: base.y / length };
+          var previous = ringIndexes[s];
+          for (var sc = 0; sc < subCarbonCount; sc += 1) {
+            var distance = 1.55 + sc * 1.5;
+            var next = addAtom(
+              "C",
+              base.x + outward.x * distance,
+              base.y + outward.y * distance,
+              sc % 2 ? 0.25 : -0.2,
+              "C"
+            );
+            addBond(previous, next, 1);
+            previous = next;
+          }
+        }
+        var aromaticCarbons = [];
+        for (var ar = 0; ar < ringIndexes.length; ar += 1) aromaticCarbons.push(ringIndexes[ar]);
+        for (var ac = 6; ac < atoms.length; ac += 1) {
+          if (atoms[ac].element === "C") aromaticCarbons.push(ac);
+        }
+        addCarbonHydrogens(aromaticCarbons);
+        return { atoms: atoms, bonds: bonds };
     }
 
     var adjacency = isomer.adjacency || [[]];
     var chain = isomer.chain && isomer.chain.length ? isomer.chain : allLongestChains(adjacency)[0];
+    var ringBond = isomer.ringBond;
+    if (ringBond && ringBond.length === 2) {
+        var cyclePath = findPath(adjacency, ringBond[0], ringBond[1], null);
+        if (cyclePath && cyclePath.length > 2) chain = cyclePath;
+    }
     var chainSet = new Set(chain);
-    var positions = new Map();
-    var carbonIndexes = [];
     var branchVectors = [
-      { x: 0.24, y: 1.05, z: 0.82 },
-      { x: -0.24, y: -1.05, z: 0.82 },
-      { x: 0.16, y: 0.42, z: -1.16 },
-      { x: -0.16, y: -0.42, z: -1.16 }
+        { x: 0.2, y: 1, z: 0.35 },
+        { x: -0.2, y: -1, z: 0.35 },
+        { x: 0.25, y: 0.4, z: -1 },
+        { x: -0.25, y: -0.4, z: -1 }
     ];
 
-    for (var i = 0; i < chain.length; i += 1) {
-      positions.set(chain[i], {
-        x: (i - (chain.length - 1) / 2) * 1.28,
-        y: i % 2 === 0 ? -0.26 : 0.26,
-        z: (i % 3 - 1) * 0.18
-      });
+    if (ringBond && chain.length > 2) {
+        var radius = 1.45;
+        var cycleSize = chain.length;
+        for (var rp = 0; rp < chain.length; rp += 1) {
+          var ringAngle = (-90 + rp * 360 / cycleSize) * Math.PI / 180;
+          positions.set(chain[rp], {
+            x: Math.cos(ringAngle) * radius,
+            y: Math.sin(ringAngle) * radius,
+            z: 0
+          });
+        }
+    } else {
+        for (var i = 0; i < chain.length; i += 1) {
+          positions.set(chain[i], {
+            x: (i - (chain.length - 1) / 2) * 1.45,
+            y: i % 2 === 0 ? -0.35 : 0.35,
+            z: i % 2 === 0 ? 0.12 : -0.12
+          });
+        }
     }
 
     function placeBranch(node, parent, origin, vector, depth) {
-      var scale = 1.15;
-      var point = {
-        x: origin.x + vector.x * scale,
-        y: origin.y + vector.y * scale,
-        z: origin.z + vector.z * scale
-      };
-      positions.set(node, point);
-      var children = adjacency[node].filter(function (next) {
-        return next !== parent;
-      });
-      for (var child = 0; child < children.length; child += 1) {
-        var nextVector = branchVectors[(child + depth) % branchVectors.length];
-        placeBranch(children[child], node, point, nextVector, depth + 1);
-      }
+        var length = Math.sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z) || 1;
+        var scale = 1.5;
+        var point = {
+          x: origin.x + vector.x / length * scale,
+          y: origin.y + vector.y / length * scale,
+          z: origin.z + vector.z / length * scale
+        };
+        positions.set(node, point);
+        var children = adjacency[node].filter(function (next) {
+          return next !== parent;
+        });
+        for (var child = 0; child < children.length; child += 1) {
+          placeBranch(children[child], node, point, branchVectors[(child + depth) % branchVectors.length], depth + 1);
+        }
     }
 
     for (var c = 0; c < chain.length; c += 1) {
-      var atom = chain[c];
-      var branches = adjacency[atom].filter(function (next) {
-        return !chainSet.has(next);
-      });
-      for (var b = 0; b < branches.length; b += 1) {
-        placeBranch(branches[b], atom, positions.get(atom), branchVectors[(c + b) % branchVectors.length], 1);
-      }
+        var atom = chain[c];
+        var branches = adjacency[atom].filter(function (next) {
+          return !chainSet.has(next);
+        });
+        for (var b = 0; b < branches.length; b += 1) {
+          placeBranch(branches[b], atom, positions.get(atom), branchVectors[(c + b) % branchVectors.length], 1);
+        }
     }
 
+    var carbonIndexes = [];
     for (var carbon = 0; carbon < adjacency.length; carbon += 1) {
-      var pos = positions.get(carbon) || { x: 0, y: 0, z: 0 };
-      carbonIndexes[carbon] = addAtom("C", pos.x, pos.y, pos.z, "C");
+        var pos = positions.get(carbon) || { x: 0, y: 0, z: 0 };
+        carbonIndexes[carbon] = addAtom("C", pos.x, pos.y, pos.z, "C");
     }
     for (var edge = 0; edge < adjacency.length; edge += 1) {
-      for (var e = 0; e < adjacency[edge].length; e += 1) {
-        var neighbor = adjacency[edge][e];
-        if (neighbor > edge) {
-          addBond(carbonIndexes[edge], carbonIndexes[neighbor], getBondOrder(isomer.edgeOrders, edge, neighbor));
+        for (var e = 0; e < adjacency[edge].length; e += 1) {
+          var neighbor = adjacency[edge][e];
+          if (neighbor > edge) {
+            addBond(carbonIndexes[edge], carbonIndexes[neighbor], getBondOrder(isomer.edgeOrders, edge, neighbor));
+          }
         }
-      }
+    }
+    if (ringBond && ringBond.length === 2) {
+        addBond(carbonIndexes[ringBond[0]], carbonIndexes[ringBond[1]], getBondOrder(isomer.edgeOrders, ringBond[0], ringBond[1]));
     }
 
     for (var a = 0; a < (isomer.attachments || []).length; a += 1) {
-      var attachment = isomer.attachments[a];
-      var parent = positions.get(attachment.atom) || { x: 0, y: 0, z: 0 };
-      var direction = branchVectors[(attachment.atom + a + 1) % branchVectors.length];
-      var hetero = addAtom(
-        attachment.element,
-        parent.x + direction.x * 1.18,
-        parent.y + direction.y * 1.18,
-        parent.z + direction.z * 1.18,
-        attachment.label
-      );
-      addBond(carbonIndexes[attachment.atom], hetero, 1);
-      if (attachment.hydrogens) {
-        var hydrogen = addAtom(
-          "H",
-          parent.x + direction.x * 1.72,
-          parent.y + direction.y * 1.72,
-          parent.z + direction.z * 1.72,
-          "H"
+        var attachment = isomer.attachments[a];
+        var parent = positions.get(attachment.atom) || { x: 0, y: 0, z: 0 };
+        var direction = branchVectors[(attachment.atom + a + 1) % branchVectors.length];
+        var length = Math.sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z) || 1;
+        direction = { x: direction.x / length, y: direction.y / length, z: direction.z / length };
+        var hetero = addAtom(
+          attachment.element,
+          parent.x + direction.x * 1.45,
+          parent.y + direction.y * 1.45,
+          parent.z + direction.z * 1.45,
+          attachment.label
         );
-        addBond(hetero, hydrogen, 1);
-      }
+        addBond(carbonIndexes[attachment.atom], hetero, 1);
+        for (var ah = 0; ah < (attachment.hydrogens || 0); ah += 1) {
+          var angle = (ah + 1) * 2.4;
+          var hx = -direction.x * 0.45 + Math.cos(angle) * 0.75;
+          var hy = -direction.y * 0.45 + Math.sin(angle) * 0.75;
+          var hz = -direction.z * 0.45 + (ah % 2 ? -0.35 : 0.35);
+          var hLength = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
+          var hydrogen = addAtom(
+            "H",
+            atoms[hetero].x + hx / hLength * 0.9,
+            atoms[hetero].y + hy / hLength * 0.9,
+            atoms[hetero].z + hz / hLength * 0.9,
+            "H"
+          );
+          addBond(hetero, hydrogen, 1);
+        }
     }
 
+    addCarbonHydrogens(carbonIndexes);
     return { atoms: atoms, bonds: bonds };
   }
 
   function molecule3DMarkup(isomer, compact) {
     if (compact) {
-      return (
-        '<div class="molecule-3d-card">' +
-        '<span>Interactive 3D</span>' +
-        '<i></i><i></i><i></i>' +
-        "</div>"
-      );
+        return (
+          '<div class="molecule-3d-card">' +
+          '<div class="molecule-3d-preview" aria-hidden="true"><i></i><i></i><i></i></div>' +
+          '<span>Interactive 3D structure</span>' +
+          '<small>Open to rotate and zoom</small>' +
+          "</div>"
+        );
     }
     var modelData = JSON.stringify(molecule3DModel(isomer));
     return (
-      '<div class="mol-viewer-3d" data-molecule-model="' +
-      encodeURIComponent(modelData) +
-      '" style="width:100%;height:100%;min-height:320px"></div>'
+        '<div class="viewer-3d-stage">' +
+          '<div class="mol-viewer-3d" data-molecule-model="' +
+          encodeURIComponent(modelData) +
+          '"></div>' +
+          '<div class="viewer-3d-controls">' +
+            '<p>Drag to rotate · scroll or pinch to zoom</p>' +
+            '<div>' +
+              '<button type="button" data-3d-rotation aria-pressed="true">Pause rotation</button>' +
+              '<button type="button" data-3d-reset>Reset view</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
     );
-  }
-
-  function renderIdleSummary(target) {
-    if (!target) {
-      return;
-    }
-      target.innerHTML =
-        '<h2 class="status-title">Start with a formula or name</h2>' +
-      '<p class="status-copy">Use Auto for most inputs. Hydrocarbons, simple haloalkanes, and alcohols like C5H11Br, 1-bromopentane, and C2H5OH are understood.</p>' +
-      '<div class="metric-grid">' +
-      metric("Step 1", "Enter") +
-      metric("Step 2", "Analyze") +
-      metric("Step 3", "Inspect") +
-      metric("Default view", "Atom labels") +
-      "</div>";
-  }
-
-  function renderAnalyzingSummary(target, displayMode) {
-    if (!target) {
-      return;
-    }
-    target.innerHTML =
-      '<h2 class="status-title">Analyzing structure</h2>' +
-      '<p class="status-copy">Checking the formula or name, choosing the right hydrocarbon family, and preparing the structure cards.</p>' +
-      '<div class="metric-grid">' +
-      metric("Status", "Working") +
-      metric("View", displayMode === "bondline" ? "Bond-line" : displayMode === "3d" ? "3D" : "Atom labels") +
-      "</div>";
-  }
-
-  function renderSummary(target, analysis) {
-    if (!target) {
-      return;
-    }
-
-    if (analysis.status === "idle") {
-      renderIdleSummary(target);
-      return;
-    }
-
-    if (analysis.status === "error") {
-      target.innerHTML =
-        '<h2 class="status-title">Check the formula</h2>' +
-        '<p class="status-copy">' +
-        escapeHtml(analysis.message) +
-        "</p>";
-      return;
-    }
-
-    if (analysis.status === "unsupported") {
-      var unsupportedMetrics =
-        analysis.carbon !== undefined
-          ? metric("Carbons", analysis.carbon) +
-            metric("Hydrogens", analysis.hydrogen) +
-            metric("DBE", analysis.dbe) +
-            metric("Mode", analysis.familyLabel || "Auto")
-          : metric("Mode", analysis.familyLabel || "Auto");
-      target.innerHTML =
-        '<h2 class="status-title">' +
-        escapeHtml(analysis.formula) +
-        "</h2>" +
-        '<p class="status-copy">' +
-        escapeHtml(analysis.message) +
-        "</p>" +
-        '<div class="metric-grid">' +
-        unsupportedMetrics +
-        "</div>";
-      return;
-    }
-
-    var dbeTooltipHtml = '<div class="dbe-info"><span class="dbe-icon">?</span><span class="dbe-tooltip"><strong>Degree of Unsaturation (DBE)</strong>Also called the index of hydrogen deficiency. Each unit of DBE represents one ring or one \u03C0 bond (double bond counts as 1, triple bond as 2). DBE = 0 means fully saturated (no rings or multiple bonds). Formula: DBE = C + 1 - H/2 - X/2 + N/2</span></div>';
-
-    target.innerHTML =
-      '<h2 class="status-title">' +
-      escapeHtml(analysis.formula) +
-      "</h2>" +
-      '<p class="status-copy">' +
-      escapeHtml(analysis.scope) +
-      "</p>" +
-      '<div class="metric-grid">' +
-      metric("Carbons", analysis.carbon) +
-      metric("Hydrogens", analysis.hydrogen) +
-      '<div class="metric"><span>DBE ' + dbeTooltipHtml + '</span><strong>' + escapeHtml(String(analysis.dbe)) + '</strong></div>' +
-      metric("Family", analysis.familyLabel) +
-      metric("Formula", analysis.familyPattern) +
-      metric(analysis.parsedOnly || analysis.nameOnly ? "Structure" : "Isomers", analysis.isomers.length) +
-      (analysis.source === "name" || analysis.source === "parsed-name" ? metric("Input", analysis.matchedAlias ? analysis.matchedAlias : analysis.matchedName) : "") +
-      "</div>" +
-      (analysis.parsedOnly
-        ? '<p class="notice">This structure was parsed directly from the name. Full isomer enumeration is still limited to formulas through C' +
-          MAX_CARBONS +
-          ".</p>"
-        : analysis.nameOnly
-        ? '<p class="notice">This name resolves to one structure. Enter ' +
-          escapeHtml(analysis.formula) +
-          " if you want the full formula isomer list.</p>"
-        : '<p class="notice">The app counts constitutional isomers. Stereoisomers, conformers, and non-selected family alternatives with the same formula are not counted separately.</p>');
   }
 
   function renderIsomerDiagram(isomer, displayMode, context) {
     if (displayMode === "3d") {
       return molecule3DMarkup(isomer, context !== "viewer");
     }
-    if (isomer.family === "cycloalkane") {
+    if (isomer.family === "bicyclic" || isomer.family === "fused_aromatic") {
+      return buildGraphDiagramSvg(isomer, displayMode);
+    }
+    if (isomer.family === "cycloalkane" || isomer.family === "cycloalkene") {
       return buildCycloalkaneDiagramSvg(isomer, displayMode);
     }
     return isomer.family === "aromatic"
@@ -4376,6 +5493,16 @@
     }
 
     target.innerHTML = "";
+
+    // Keep the page quiet until there is something to show: the results block
+    // (heading, toolbar, cards) only appears once a search resolves, while the
+    // progress bar keeps it visible during analysis.
+    var section = target.parentNode;
+    if (section && section.classList) {
+      section.hidden =
+        analysis.status !== "ok" && !document.body.classList.contains("is-analyzing");
+    }
+
     if (titleTarget) {
       titleTarget.textContent = "Isomers";
     }
@@ -4476,6 +5603,9 @@
       var card = document.createElement("article");
       card.className = "isomer-card";
       card.style.setProperty("--card-index", String(i));
+      if (isomer.family) {
+        card.setAttribute("data-family", isomer.family);
+      }
       if (isomer.isomerType) {
         card.setAttribute("data-isomer-type", isomer.isomerType);
       }
@@ -4825,11 +5955,16 @@
       });
   }
 
+  var hasMounted = false;
+
   function mount() {
+    if (hasMounted) {
+      return;
+    }
+    hasMounted = true;
     var form = document.querySelector("[data-formula-form]");
     var input = document.querySelector("[data-formula-input]");
     var analyzeButton = form ? form.querySelector('button[type="submit"]') : null;
-    var summary = document.querySelector("[data-summary]");
     var results = document.querySelector("[data-results]");
     var resultsSection = document.querySelector("[data-results-section]");
     var progress = document.querySelector("[data-analysis-progress]");
@@ -4870,14 +6005,12 @@
     var installClose = document.querySelector("[data-install-close]");
     var installSteps = document.querySelector("[data-install-steps]");
     var recentList = document.querySelector("[data-recent-list]");
-    var recentPanel = document.querySelector("[data-recent-inputs]");
-    var recentButtons = document.querySelector("[data-recent-buttons]");
     var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
     var themeStorageKey = "hydrocarbon-theme";
     var selectedMode = params.get("family") || "auto";
     var requestedView = params.get("view");
     var displayMode = requestedView === "bondline" || requestedView === "3d" ? requestedView : "atom";
-    var selectedTheme = "dark";
+    var selectedTheme = isValidChoice(readStoredSetting("hydrocarbon-theme", "auto"), ["auto", "light", "dark"], "auto");
     var initialQuery = params.get("q") || params.get("query") || "";
     var currentAnalysis = null;
     var currentViewer3D = null;
@@ -4907,17 +6040,147 @@
       return choices.indexOf(value) !== -1 ? value : fallback;
     }
 
-    function systemPrefersDark() {
+     function systemPrefersDark() {
       return typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches;
     }
 
+    function setCustomSelectValue(wrapper, value) {
+      if (!wrapper) {
+        return;
+      }
+      var valueSpan = wrapper.querySelector("[data-select-value]");
+      var options = wrapper.querySelectorAll("[data-select-option]");
+      for (var i = 0; i < options.length; i += 1) {
+        var opt = options[i];
+        var isSelected = opt.getAttribute("data-select-option") === value;
+        opt.setAttribute("data-selected", isSelected ? "true" : "false");
+        opt.setAttribute("aria-selected", isSelected ? "true" : "false");
+        opt.tabIndex = isSelected ? 0 : -1;
+        if (isSelected && valueSpan) {
+          valueSpan.textContent = opt.textContent.trim();
+        }
+      }
+    }
+
+    function initCustomSelect(wrapper, onChange) {
+      if (!wrapper) {
+        return;
+      }
+      var trigger = wrapper.querySelector("[data-select-trigger]");
+      var menu = wrapper.querySelector("[data-select-menu]");
+      var options = wrapper.querySelectorAll("[data-select-option]");
+
+      function isMenuOpen() {
+        return menu && !menu.hidden;
+      }
+
+      function setMenuOpen(open) {
+        if (!menu) {
+          return;
+        }
+        menu.hidden = !open;
+        menu.setAttribute("data-hidden", open ? "false" : "true");
+        wrapper.setAttribute("data-open", open ? "true" : "false");
+        if (trigger) {
+          trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+      }
+
+      function focusOption(index) {
+        if (!options.length) {
+          return;
+        }
+        var boundedIndex = (index + options.length) % options.length;
+        options[boundedIndex].focus();
+      }
+
+      if (trigger) {
+        trigger.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var otherSelects = document.querySelectorAll("[data-select]");
+          for (var j = 0; j < otherSelects.length; j += 1) {
+            if (otherSelects[j] !== wrapper) {
+              var otherMenu = otherSelects[j].querySelector("[data-select-menu]");
+              var otherTrigger = otherSelects[j].querySelector("[data-select-trigger]");
+              if (otherMenu) {
+                otherMenu.hidden = true;
+                otherMenu.setAttribute("data-hidden", "true");
+              }
+              otherSelects[j].setAttribute("data-open", "false");
+              if (otherTrigger) {
+                otherTrigger.setAttribute("aria-expanded", "false");
+              }
+            }
+          }
+          setMenuOpen(!isMenuOpen());
+        });
+        trigger.addEventListener("keydown", function (event) {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setMenuOpen(true);
+            var selectedIndex = 0;
+            for (var j = 0; j < options.length; j += 1) {
+              if (options[j].getAttribute("aria-selected") === "true") {
+                selectedIndex = j;
+                break;
+              }
+            }
+            focusOption(selectedIndex);
+          } else if (event.key === "Escape" && isMenuOpen()) {
+            setMenuOpen(false);
+          }
+        });
+      }
+
+      for (var i = 0; i < options.length; i += 1) {
+        options[i].setAttribute("role", "option");
+        options[i].tabIndex = -1;
+        options[i].addEventListener("click", function () {
+          var val = this.getAttribute("data-select-option");
+          setCustomSelectValue(wrapper, val);
+          setMenuOpen(false);
+          if (trigger) {
+            trigger.focus();
+          }
+          if (typeof onChange === "function") {
+            onChange(val);
+          }
+        });
+      }
+
+      if (menu) {
+        menu.addEventListener("keydown", function (event) {
+          var activeIndex = Array.prototype.indexOf.call(options, event.target);
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            focusOption(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            focusOption(event.key === "Home" ? 0 : options.length - 1);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setMenuOpen(false);
+            if (trigger) {
+              trigger.focus();
+            }
+          }
+        });
+      }
+
+      document.addEventListener("click", function () {
+        if (isMenuOpen()) {
+          setMenuOpen(false);
+        }
+      });
+    }
+
     function setMode(mode) {
-      selectedMode = "auto";
+      selectedMode = mode || "auto";
       for (var i = 0; i < modeButtons.length; i += 1) {
         modeButtons[i].classList.toggle("active", modeButtons[i].getAttribute("data-mode") === selectedMode);
       }
-      if (modeSelect) {
-        modeSelect.value = selectedMode;
+        if (modeSelect) {
+        setCustomSelectValue(modeSelect, selectedMode);
       }
     }
 
@@ -4926,17 +6189,18 @@
       for (var i = 0; i < viewButtons.length; i += 1) {
         viewButtons[i].classList.toggle("active", viewButtons[i].getAttribute("data-view-mode") === displayMode);
       }
-      if (viewSelect) {
-        viewSelect.value = displayMode;
+        if (viewSelect) {
+        setCustomSelectValue(viewSelect, displayMode);
       }
     }
 
     function setTheme(theme) {
-      selectedTheme = "dark";
-      document.body.classList.toggle("theme-dark", true);
-      document.body.classList.toggle("theme-light", false);
+      selectedTheme = theme || "auto";
+      var isDark = selectedTheme === "dark" || (selectedTheme === "auto" && systemPrefersDark());
+      document.body.classList.toggle("theme-dark", isDark);
+      document.body.classList.toggle("theme-light", !isDark);
       if (themeSelect) {
-        themeSelect.value = selectedTheme;
+        setCustomSelectValue(themeSelect, selectedTheme);
       }
       writeStoredSetting(themeStorageKey, selectedTheme);
     }
@@ -4963,29 +6227,79 @@
       }
     }
 
-    function renderRecentInputs() {
-      var items = loadRecentInputs();
-      if (recentList) {
-        recentList.innerHTML = "";
-        for (var i = 0; i < items.length; i += 1) {
-          var option = document.createElement("option");
-          option.value = items[i];
-          recentList.appendChild(option);
-        }
-      }
+    var HISTORY_CLOCK_ICON =
+      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>';
+    var HISTORY_REMOVE_ICON =
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>';
 
-      if (!recentPanel || !recentButtons) {
+    // The history dropdown behaves like a browser's: it only opens while the
+    // empty search field has focus, and it never competes with the suggestions.
+    function historyShouldOpen(items) {
+      return Boolean(
+        recentList &&
+        input &&
+        items.length &&
+        document.activeElement === input &&
+        !input.value.trim() &&
+        !(suggestionsDropdown && !suggestionsDropdown.hidden)
+      );
+    }
+
+    function renderRecentInputs() {
+      if (!recentList) {
         return;
       }
-      recentButtons.innerHTML = "";
-      recentPanel.hidden = !items.length;
-      for (var r = 0; r < items.length; r += 1) {
-        var button = document.createElement("button");
-        button.type = "button";
-        button.textContent = items[r];
-        button.setAttribute("data-recent-value", items[r]);
-        recentButtons.appendChild(button);
+      recentList.innerHTML = "";
+      var items = loadRecentInputs();
+      if (!historyShouldOpen(items)) {
+        recentList.hidden = true;
+        return;
       }
+
+      var head = document.createElement("div");
+      head.className = "history-head";
+      var heading = document.createElement("span");
+      heading.textContent = "Recent searches";
+      var clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "history-clear";
+      clear.setAttribute("data-recent-clear", "");
+      clear.textContent = "Clear all";
+      head.appendChild(heading);
+      head.appendChild(clear);
+      recentList.appendChild(head);
+
+      for (var i = 0; i < items.length; i += 1) {
+        var row = document.createElement("div");
+        row.className = "history-row";
+
+        var pick = document.createElement("button");
+        pick.type = "button";
+        pick.className = "history-pick";
+        pick.setAttribute("data-recent-value", items[i]);
+        pick.innerHTML = HISTORY_CLOCK_ICON + '<span class="history-text"></span>';
+        pick.querySelector(".history-text").textContent = items[i];
+
+        var remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "history-remove";
+        remove.setAttribute("data-recent-remove", items[i]);
+        remove.setAttribute("aria-label", "Remove " + items[i] + " from recent searches");
+        remove.innerHTML = HISTORY_REMOVE_ICON;
+
+        row.appendChild(pick);
+        row.appendChild(remove);
+        recentList.appendChild(row);
+      }
+      recentList.hidden = false;
+    }
+
+    function forgetRecentInput(value) {
+      var key = normalizeName(value);
+      saveRecentInputs(loadRecentInputs().filter(function (item) {
+        return normalizeName(item) !== key;
+      }));
+      renderRecentInputs();
     }
 
     function rememberRecentInput(value, analysis) {
@@ -5241,7 +6555,15 @@
       document.body.classList.toggle("is-analyzing", active);
       if (analyzeButton) {
         analyzeButton.disabled = active;
-        analyzeButton.textContent = active ? "Analyzing" : "Analyze";
+        analyzeButton.classList.toggle("is-loading", active);
+        analyzeButton.setAttribute("aria-label", active ? "Analyzing" : "Search");
+        analyzeButton.setAttribute("title", active ? "Analyzing" : "Search");
+        var submitLabel = analyzeButton.querySelector("[data-submit-label]");
+        if (submitLabel) {
+          submitLabel.textContent = active
+            ? "Analyzing"
+            : submitLabel.getAttribute("data-idle-label") || "Go";
+        }
       }
       if (progress) {
         progress.hidden = !active;
@@ -5263,17 +6585,14 @@
     function run(options) {
       options = options || {};
       closeAnalysisPopup();
+      setAnalyzing(false);
       if (!input.value.trim()) {
-        setAnalyzing(false);
         currentAnalysis = { status: "idle" };
-        renderSummary(summary, currentAnalysis);
         renderResults(results, countLabel, currentAnalysis, resultsTitle, displayMode);
         return;
       }
       currentAnalysis = analyzeQuery(input.value, selectedMode);
-      renderSummary(summary, currentAnalysis);
       renderResults(results, countLabel, currentAnalysis, resultsTitle, displayMode);
-      setAnalyzing(false);
       if (options.remember) {
         rememberRecentInput(input.value, currentAnalysis);
       }
@@ -5295,8 +6614,11 @@
         run(options);
         return;
       }
+      // Prune caches to prevent memory leaks
+      pruneCache(plantedCache);
+      pruneCache(rootCache);
+      pruneCache(aromaticCache);
       setAnalyzing(true);
-      renderAnalyzingSummary(summary, displayMode);
       renderResults(results, countLabel, { status: "idle" }, resultsTitle, displayMode);
       if (countLabel) {
         countLabel.textContent = "Building structure cards...";
@@ -5329,24 +6651,44 @@
         (displayMode === "bondline" ? "Bond-line view" : displayMode === "3d" ? "Interactive 3D view" : "Atom-label view");
       viewer.hidden = false;
       viewerDiagram.innerHTML = renderIsomerDiagram(isomer, displayMode, "viewer");
-      // Initialise 3D viewer if 3D mode is active
-            if (displayMode === "3d") {
-              var viewerContainer = viewerDiagram.querySelector('.mol-viewer-3d');
-              if (viewerContainer && typeof MoleculeViewer3D !== 'undefined') {
-                var modelDataAttr = viewerContainer.getAttribute('data-molecule-model');
-                if (modelDataAttr) {
-                  try {
-                    var model = JSON.parse(decodeURIComponent(modelDataAttr));
-                    var v3d = new MoleculeViewer3D();
-                    v3d.init(viewerContainer);
-                    v3d.loadModel(model);
-                    currentViewer3D = v3d;
-                  } catch (e) {
-                    console.warn('3D viewer init failed:', e);
-                  }
-                }
-              }
-            }
+      if (displayMode === "3d") {
+        var viewerContainer = viewerDiagram.querySelector(".mol-viewer-3d");
+        if (!viewerContainer || typeof MoleculeViewer3D === "undefined") {
+          viewerDiagram.innerHTML = '<p class="viewer-error" role="alert">The interactive 3D viewer is unavailable. Try another view mode.</p>';
+          return;
+        }
+        try {
+          var modelDataAttr = viewerContainer.getAttribute("data-molecule-model");
+          var model = JSON.parse(decodeURIComponent(modelDataAttr || ""));
+          currentViewer3D = new MoleculeViewer3D();
+          currentViewer3D.init(viewerContainer);
+          currentViewer3D.loadModel(model);
+        } catch (error) {
+          if (currentViewer3D) {
+            currentViewer3D.dispose();
+            currentViewer3D = null;
+          }
+          console.error("Could not open the 3D structure viewer.", error);
+          viewerDiagram.innerHTML = '<p class="viewer-error" role="alert">The 3D structure could not be displayed. Try another view mode.</p>';
+          return;
+        }
+
+        var rotationButton = viewerDiagram.querySelector("[data-3d-rotation]");
+        var resetButton = viewerDiagram.querySelector("[data-3d-reset]");
+        if (rotationButton) {
+          rotationButton.addEventListener("click", function () {
+            if (!currentViewer3D) return;
+            var rotating = currentViewer3D.toggleRotation();
+            rotationButton.textContent = rotating ? "Pause rotation" : "Resume rotation";
+            rotationButton.setAttribute("aria-pressed", rotating ? "true" : "false");
+          });
+        }
+        if (resetButton) {
+          resetButton.addEventListener("click", function () {
+            if (currentViewer3D) currentViewer3D.resetView();
+          });
+        }
+      }
     }
 
     function closeCompoundViewer() {
@@ -5356,25 +6698,141 @@
       if (viewer) {
         viewer.hidden = true;
       }
+      if (currentViewer3D) {
+        currentViewer3D.dispose();
+        currentViewer3D = null;
+      }
       if (viewerDiagram) {
         viewerDiagram.innerHTML = "";
       }
     }
 
+    var tourSteps = [
+      { target: "[data-formula-input]", title: "Search for compounds", description: "Enter a formula like C<sub>5</sub>H<sub>12</sub> or a name like isobutane, toluene, or ethanol." },
+      { target: "[data-examples-track]", title: "Quick examples", description: "Tap any example chip to instantly see its isomers." },
+      { target: ".settings-grid", title: "Customize your view", description: "Choose a mode (alkane, aromatic, etc.), a theme, and how to view structures — atom labels, bond-line, or 3D." },
+      { target: "[data-results-section]", title: "Browse the results", description: "Each card shows an isomer with its IUPAC name, formula, and structure diagram." },
+      { target: "[data-compound-viewer]", title: "Open for a closer look", description: "Tap Open on any card for a full-screen view with atom labels, bond-line, or interactive 3D modes." }
+    ];
+
+    var currentTourStep = 0;
+
     function openTour() {
-      if (tour) {
-        tour.hidden = false;
+      if (!tour) {
+        return;
       }
+      currentTourStep = 0;
+      renderTourStep();
+      tour.hidden = false;
     }
 
     function closeTour() {
       if (tour) {
         tour.hidden = true;
       }
+      clearTourHighlight();
       try {
         localStorage.setItem(tourStorageKey, "true");
       } catch (error) {
         // Storage can be unavailable in strict browser modes.
+      }
+    }
+
+    function clearTourHighlight() {
+      var prev = document.querySelector("[data-tour-highlight]");
+      if (prev) {
+        prev.removeAttribute("data-tour-highlight");
+      }
+    }
+
+    function scrollToTourTarget(selector) {
+      var el = document.querySelector(selector);
+      if (!el) {
+        return false;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      return true;
+    }
+
+    function renderTourStep() {
+      if (!tour) {
+        return;
+      }
+      clearTourHighlight();
+
+      var step = tourSteps[currentTourStep];
+      if (!step) {
+        closeTour();
+        return;
+      }
+
+      var targetEl = document.querySelector(step.target);
+      if (targetEl) {
+        targetEl.setAttribute("data-tour-highlight", "true");
+      }
+
+      var popoverTitle = tour.querySelector("[data-tour-title]");
+      var popoverDesc = tour.querySelector("[data-tour-description]");
+      if (popoverTitle) {
+        popoverTitle.textContent = step.title;
+      }
+      if (popoverDesc) {
+        popoverDesc.innerHTML = '<p class="tour-description">' + step.description + "</p>";
+      }
+
+      var progress = tour.querySelector("[data-tour-progress]");
+      if (progress) {
+        progress.innerHTML = "";
+        for (var pi = 0; pi < tourSteps.length; pi += 1) {
+          var dot = document.createElement("span");
+          dot.className = "tour-progress-dot";
+          if (pi === currentTourStep) {
+            dot.classList.add("active");
+          }
+          progress.appendChild(dot);
+        }
+      }
+
+      scrollToTourTarget(step.target);
+
+      var prevBtn = tour.querySelector("[data-tour-prev]");
+      var nextBtn = tour.querySelector("[data-tour-next]");
+      if (prevBtn) {
+        prevBtn.disabled = currentTourStep === 0;
+      }
+      if (nextBtn) {
+        nextBtn.textContent = currentTourStep === tourSteps.length - 1 ? "Finish" : "Next";
+      }
+    }
+
+    var tourNextBtn = null;
+    var tourPrevBtn = null;
+
+    function bindTourNav() {
+      if (!tour) {
+        return;
+      }
+      tourNextBtn = tour.querySelector("[data-tour-next]");
+      tourPrevBtn = tour.querySelector("[data-tour-prev]");
+
+      if (tourPrevBtn) {
+        tourPrevBtn.addEventListener("click", function () {
+          if (currentTourStep > 0) {
+            currentTourStep -= 1;
+            renderTourStep();
+          }
+        });
+      }
+
+      if (tourNextBtn) {
+        tourNextBtn.addEventListener("click", function () {
+          currentTourStep += 1;
+          if (currentTourStep >= tourSteps.length) {
+            closeTour();
+          } else {
+            renderTourStep();
+          }
+        });
       }
     }
 
@@ -5398,22 +6856,22 @@
     }
 
     if (modeSelect) {
-      modeSelect.addEventListener("change", function (event) {
-        setMode(event.currentTarget.value);
+      initCustomSelect(modeSelect, function (val) {
+        setMode(val);
         run();
       });
     }
 
     if (viewSelect) {
-      viewSelect.addEventListener("change", function (event) {
-        setDisplayMode(event.currentTarget.value);
+      initCustomSelect(viewSelect, function (val) {
+        setDisplayMode(val);
         run();
       });
     }
 
     if (themeSelect) {
-      themeSelect.addEventListener("change", function (event) {
-        setTheme(event.currentTarget.value);
+      initCustomSelect(themeSelect, function (val) {
+        setTheme(val);
       });
     }
 
@@ -5459,17 +6917,22 @@
       if (event.key === "Escape" && installSheet && !installSheet.hidden) {
         closeInstallSheet();
       }
+      if (event.key === "Escape" && recentList && !recentList.hidden) {
+        recentList.hidden = true;
+      }
+      if (event.key === "Escape" && suggestionsDropdown && !suggestionsDropdown.hidden) {
+        suggestionsDropdown.hidden = true;
+      }
     });
 
     var surprisePool = [
       "isobutane", "C5H12", "C8H10", "C6H6", "C3H8",
       "C4H8", "C4H6", "C7H16", "C10H22",
-      "C5H11Br", "C2H5OH", "C4H8O",
+      "C5H11Br", "C2H5OH", "C3H9N",
       "isopropyl bromide", "1-bromo-4-ethyl-6-methylnonane",
-      "acetic acid", "acetone", "diethyl ether", "methanamine",
-      "2-bromopropane", "propan-2-ol", "toluene",
+      "methanamine", "2-bromopropane", "propan-2-ol", "toluene",
       "hex-2-ene", "but-1-yne", "2-methylpentane",
-      "pentan-2-one", "ethanal", "butanoic acid"
+      "C6H12", "CH4", "C2H4", "C2H2"
     ];
 
     var exampleButtons = document.querySelectorAll("[data-example]");
@@ -5484,6 +6947,64 @@
         queueRun({ remember: true, scroll: true });
         input.focus();
       });
+    }
+
+    // --- Examples carousel: deliberate, user-controlled scrolling ---
+    var examplesTrack = document.querySelector("[data-examples-track]");
+    var carouselNavPrev = document.querySelector("[data-examples-scroll='prev']");
+    var carouselNavNext = document.querySelector("[data-examples-scroll='next']");
+    var examplesStatus = document.querySelector("[data-examples-status]");
+    var examplesProgress = document.querySelector("[data-examples-progress]");
+
+    if (examplesTrack) {
+      function updateCarouselNav() {
+        if (!examplesTrack) {
+          return;
+        }
+        var overflow = examplesTrack.scrollWidth > examplesTrack.clientWidth + 1;
+        examplesTrack.setAttribute("data-overflow", overflow);
+        if (carouselNavPrev) {
+          carouselNavPrev.disabled = !overflow || examplesTrack.scrollLeft <= 8;
+        }
+        if (carouselNavNext) {
+          carouselNavNext.disabled = !overflow || examplesTrack.scrollLeft >= examplesTrack.scrollWidth - examplesTrack.clientWidth - 8;
+        }
+        var cards = examplesTrack.querySelectorAll("[data-example]");
+        if (examplesStatus && cards.length) {
+          var trackBounds = examplesTrack.getBoundingClientRect();
+          var firstVisible = 0;
+          for (var i = 0; i < cards.length; i += 1) {
+            if (cards[i].getBoundingClientRect().right > trackBounds.left + 4) {
+              firstVisible = i;
+              break;
+            }
+          }
+          examplesStatus.textContent = String(firstVisible + 1).padStart(2, "0") + " / " + String(cards.length).padStart(2, "0");
+        }
+        if (examplesProgress) {
+          var progress = examplesTrack.scrollWidth <= examplesTrack.clientWidth
+            ? 100
+            : (examplesTrack.scrollLeft + examplesTrack.clientWidth) / examplesTrack.scrollWidth * 100;
+          examplesProgress.style.width = Math.min(100, progress) + "%";
+        }
+      }
+
+      function scrollExamples(direction) {
+        var firstCard = examplesTrack.querySelector("[data-example]");
+        var gap = parseFloat(getComputedStyle(examplesTrack).columnGap) || 0;
+        var step = firstCard ? firstCard.getBoundingClientRect().width + gap : examplesTrack.clientWidth * 0.75;
+        examplesTrack.scrollBy({ left: direction * Math.max(step, examplesTrack.clientWidth * 0.65), behavior: "smooth" });
+      }
+
+      if (carouselNavPrev) {
+        carouselNavPrev.addEventListener("click", function () { scrollExamples(-1); });
+      }
+      if (carouselNavNext) {
+        carouselNavNext.addEventListener("click", function () { scrollExamples(1); });
+      }
+      examplesTrack.addEventListener("scroll", updateCarouselNav, { passive: true });
+      window.addEventListener("resize", updateCarouselNav);
+      updateCarouselNav();
     }
 
     // Copy name/formula button handler (event delegation)
@@ -5518,13 +7039,35 @@
       });
     }
 
-    if (recentButtons) {
-      recentButtons.addEventListener("click", function (event) {
-        var button = event.target.closest("[data-recent-value]");
-        if (!button) {
+    if (recentList) {
+      // Keep the field focused while the pointer is used inside the dropdown.
+      recentList.addEventListener("mousedown", function (event) {
+        if (event.target.closest("button")) {
+          event.preventDefault();
+        }
+      });
+
+      recentList.addEventListener("click", function (event) {
+        if (event.target.closest("[data-recent-clear]")) {
+          saveRecentInputs([]);
+          renderRecentInputs();
+          if (input) {
+            input.focus();
+          }
           return;
         }
-        input.value = button.getAttribute("data-recent-value");
+
+        var remove = event.target.closest("[data-recent-remove]");
+        if (remove) {
+          forgetRecentInput(remove.getAttribute("data-recent-remove"));
+          return;
+        }
+
+        var item = event.target.closest("[data-recent-value]");
+        if (!item) {
+          return;
+        }
+        input.value = item.getAttribute("data-recent-value");
         queueRun({ remember: true, scroll: true });
         input.focus();
       });
@@ -5596,7 +7139,7 @@
       });
     }
 
-    if (tourOpen) {
+     if (tourOpen) {
       tourOpen.addEventListener("click", openTour);
     }
 
@@ -5606,11 +7149,13 @@
 
     if (tour) {
       tour.addEventListener("click", function (event) {
-        if (event.target === tour) {
+        if (!event.target.closest("[data-tour-popover]")) {
           closeTour();
         }
       });
     }
+
+    bindTourNav();
 
     // --- Autocomplete suggestions ---
     var suggestionsDropdown = document.querySelector("[data-suggestions-dropdown]");
@@ -5657,9 +7202,21 @@
     }
 
     if (input) {
+      input.addEventListener("focus", renderRecentInputs);
+      input.addEventListener("blur", function () {
+        if (recentList) {
+          recentList.hidden = true;
+        }
+      });
       input.addEventListener("input", function () {
+        renderRecentInputs();
         clearTimeout(inputDebounceTimer);
-        inputDebounceTimer = setTimeout(showSuggestions, 180);
+        inputDebounceTimer = setTimeout(function () {
+          showSuggestions();
+          // The suggestions state changed, so the history dropdown gets a
+          // second chance to open (e.g. after clearing the field).
+          renderRecentInputs();
+        }, 180);
       });
     }
 
@@ -5678,10 +7235,20 @@
       });
     }
 
-    // Hide suggestions on outside click
+    // Hide suggestions and history on outside click. Targets detached by a
+    // re-render (clear/remove) are ignored so the dropdown is not closed by
+    // the very interaction that just refreshed it.
     document.addEventListener("click", function (e) {
       if (suggestionsDropdown && !suggestionsDropdown.contains(e.target) && e.target !== input) {
         suggestionsDropdown.hidden = true;
+      }
+      if (
+        recentList &&
+        e.target !== input &&
+        (e.target.isConnected !== false) &&
+        !recentList.contains(e.target)
+      ) {
+        recentList.hidden = true;
       }
     });
 
@@ -5702,8 +7269,8 @@
     if (typeof matchMedia !== "undefined") {
       var darkPreference = matchMedia("(prefers-color-scheme: dark)");
       var updateSystemTheme = function () {
-        if (selectedTheme === "system") {
-          setTheme("system");
+        if (selectedTheme === "auto") {
+          setTheme("auto");
         }
       };
       if (darkPreference.addEventListener) {
@@ -5767,7 +7334,9 @@
     parseAmineName: parseAmineName,
     parseEtherName: parseEtherName,
     generateAlkaneIsomers: generateAlkaneIsomers,
-    generateUnsaturatedAcyclicIsomers: generateUnsaturatedAcyclicIsomers,
+    generateBicyclicIsomers: generateBicyclicIsomers,
+    fusedAromaticIsomers: fusedAromaticIsomers,
+    generateUnsaturatedAcyclicIsomers: generateUnsaturatedAcyclicByBondOrder,
     generateAromaticIsomers: generateAromaticIsomers,
     nameAlkane: nameAlkane,
     nameUnsaturatedAcyclic: nameUnsaturatedAcyclic,

@@ -1,0 +1,12 @@
+{
+  "name": "hydrocarbon-isomer-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "npm run build",
+    "dev": "node .serve-root.mjs 5173",
+    "build": "node .build-static.cjs",
+    "test": "node tests.js"
+  },
+  "type": "module"
+}
