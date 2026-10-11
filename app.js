@@ -21,7 +21,9 @@
       typeof algorithmModules.cycloalkene !== "function" ||
       typeof algorithmModules.diene !== "function" ||
       typeof algorithmModules.fusedAromatic !== "function" ||
+      typeof algorithmModules.familyRules !== "function" ||
       typeof algorithmModules.haloalkane !== "function" ||
+      typeof algorithmModules.formula !== "function" ||
       typeof algorithmModules.substitutedAlkane !== "function") {
     throw new Error("Chemistry family algorithms were not loaded before the application.");
   }
@@ -176,6 +178,18 @@
   };
 
   var HALOGENS = ["F", "Cl", "Br", "I"];
+  var familyRules = algorithmModules.familyRules({
+    MAX_CARBONS: MAX_CARBONS,
+    HALOGENS: HALOGENS
+  });
+  var expectedHydrogenForFamily = familyRules.expectedHydrogenForFamily;
+  var familyMinimumCarbon = familyRules.familyMinimumCarbon;
+  var familyMaximumCarbon = familyRules.familyMaximumCarbon;
+  var halogenElements = familyRules.halogenElements;
+  var hasOnlyCarbonHydrogen = familyRules.hasOnlyCarbonHydrogen;
+  var formulaMatchesFamily = familyRules.formulaMatchesFamily;
+  var detectFamily = familyRules.detectFamily;
+  var formulaElementsForFamily = familyRules.formulaElementsForFamily;
   var HALOGEN_PREFIXES = {
     F: "fluoro",
     Cl: "chloro",
@@ -403,24 +417,6 @@
     "decakis"
   ];
 
-  function normalizeFormula(input) {
-    return String(input || "")
-      .trim()
-      .replace(/\s+/g, "")
-      .replace(/_/g, "")
-      .replace(/[{}]/g, "")
-      .replace(/\u2080/g, "0")
-      .replace(/\u2081/g, "1")
-      .replace(/\u2082/g, "2")
-      .replace(/\u2083/g, "3")
-      .replace(/\u2084/g, "4")
-      .replace(/\u2085/g, "5")
-      .replace(/\u2086/g, "6")
-      .replace(/\u2087/g, "7")
-      .replace(/\u2088/g, "8")
-      .replace(/\u2089/g, "9");
-  }
-
   function normalizeName(input) {
     return String(input || "")
       .trim()
@@ -433,35 +429,12 @@
     return normalizeName(input).replace(/[(),-]/g, "");
   }
 
-  function isFormulaInput(input) {
-    var formula = normalizeFormula(input);
-    if (!/^[A-Za-z0-9]+$/.test(formula) || !/[0-9]/.test(formula)) {
-      return false;
-    }
-    try {
-      parseFormula(formula);
-      return true;
-    } catch (error) {
-      return /^[Cc](?:\d|[Hh]|[Oo]|[Ff]|[Ii]|[Bb][Rr]|[Cc][Ll])/.test(formula);
-    }
-  }
-
-  function formatFormula(carbon, hydrogen) {
-    return "C" + (carbon === 1 ? "" : carbon) + "H" + (hydrogen === 1 ? "" : hydrogen);
-  }
-
-  function formatMolecularFormula(elements) {
-    var order = ["C", "H", "N", "Br", "Cl", "F", "I", "O"];
-    var pieces = [];
-    for (var i = 0; i < order.length; i += 1) {
-      var element = order[i];
-      var count = elements[element] || 0;
-      if (count > 0) {
-        pieces.push(element + (count === 1 ? "" : count));
-      }
-    }
-    return pieces.join("");
-  }
+  var formulaCore = algorithmModules.formula(HALOGENS);
+  var normalizeFormula = formulaCore.normalizeFormula;
+  var isFormulaInput = formulaCore.isFormulaInput;
+  var formatFormula = formulaCore.formatFormula;
+  var formatMolecularFormula = formulaCore.formatMolecularFormula;
+  var parseFormula = formulaCore.parseFormula;
 
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (character) {
@@ -473,70 +446,6 @@
         "'": "&#39;"
       }[character];
     });
-  }
-
-  function parseFormula(input) {
-    var formula = normalizeFormula(input);
-    if (!formula) {
-      throw new Error("Enter a formula, for example C5H12, C5H11Br, or C2H5OH.");
-    }
-
-    var totals = { C: 0, H: 0, O: 0, F: 0, Cl: 0, Br: 0, I: 0, N: 0 };
-    var cursor = 0;
-
-    while (cursor < formula.length) {
-      var two = formula.slice(cursor, cursor + 2).toLowerCase();
-      var symbol = "";
-      if (two === "br") {
-        symbol = "Br";
-        cursor += 2;
-      } else if (two === "cl") {
-        symbol = "Cl";
-        cursor += 2;
-      } else {
-        var one = formula[cursor];
-        if (!/[A-Za-z]/.test(one)) {
-          throw new Error("Formula contains an unexpected character near \"" + formula.slice(cursor) + "\".");
-        }
-        symbol = one.toUpperCase();
-        cursor += 1;
-      }
-
-      if (!Object.prototype.hasOwnProperty.call(totals, symbol)) {
-        throw new Error("Only C, H, N, O, F, Cl, Br, and I are supported in this app.");
-      }
-
-      var digitStart = cursor;
-      while (cursor < formula.length && /[0-9]/.test(formula[cursor])) {
-        cursor += 1;
-      }
-      var digits = formula.slice(digitStart, cursor);
-      var count = digits ? Number(digits) : 1;
-      if (!Number.isSafeInteger(count) || count < 1) {
-        throw new Error("Element counts must be positive whole numbers.");
-      }
-
-      var nextTotal = totals[symbol] + count;
-      if (!Number.isSafeInteger(nextTotal)) {
-        throw new Error("Element counts must be positive whole numbers.");
-      }
-      totals[symbol] = nextTotal;
-    }
-
-    if (totals.C < 1 || totals.H < 1) {
-      throw new Error("A hydrocarbon or derivative formula must include both carbon and hydrogen.");
-    }
-
-    return {
-      carbon: totals.C,
-      hydrogen: totals.H,
-      oxygen: totals.O,
-      halogen: HALOGENS.reduce(function (sum, element) {
-        return sum + totals[element];
-      }, 0),
-      elements: totals,
-      formula: formatMolecularFormula(totals)
-    };
   }
 
   function compareStrings(a, b) {
@@ -2268,267 +2177,6 @@
     return parts.join("");
   }
 
-  function expectedHydrogenForFamily(carbon, family) {
-    if (family === "alkane") {
-      return carbon * 2 + 2;
-    }
-    if (family === "alkene") {
-      return carbon * 2;
-    }
-    if (family === "alkyne") {
-      return carbon * 2 - 2;
-    }
-    if (family === "cycloalkane") {
-      return carbon * 2;
-    }
-    if (family === "aromatic") {
-      return carbon * 2 - 6;
-    }
-    if (family === "haloalkane") {
-      return carbon * 2 + 1;
-    }
-    if (family === "alcohol" || family === "ether") {
-      return carbon * 2 + 2;
-    }
-    if (family === "ester" || family === "carboxylic acid") {
-      return carbon * 2;
-    }
-    if (family === "aldehyde" || family === "ketone") {
-      return carbon * 2;
-    }
-    if (family === "amine") {
-      return carbon * 2 + 3;
-    }
-    if (family === "cycloalkane") {
-      return carbon * 2;
-    }
-    if (family === "cycloalkene") {
-      return carbon * 2 - 2;
-    }
-    if (family === "diene") {
-      return carbon * 2 - 2;
-    }
-    if (family === "bicyclic") {
-      return carbon * 2 - 2;
-    }
-    if (family === "fused_aromatic") {
-      return carbon === 10 ? 8 : carbon === 14 ? 10 : null;
-    }
-    if (family === "nitrile") {
-      return carbon * 2 - 1;
-    }
-    if (family === "nitro") {
-      return carbon * 2 + 1;
-    }
-    if (family === "amide") {
-      return carbon * 2 + 1;
-    }
-    return null;
-  }
-
-  function familyMinimumCarbon(family) {
-    if (family === "alkane") {
-      return 1;
-    }
-    if (family === "alkene" || family === "alkyne") {
-      return 2;
-    }
-    if (family === "cycloalkane") {
-      return 3;
-    }
-    if (family === "aromatic") {
-      return 6;
-    }
-    if (family === "haloalkane" || family === "alcohol") {
-      return 1;
-    }
-    if (family === "ester") {
-      return 2;
-    }
-    if (family === "carboxylic acid") {
-      return 1;
-    }
-    if (family === "aldehyde") {
-      return 1;
-    }
-    if (family === "ketone") {
-      return 3;
-    }
-    if (family === "ether") {
-      return 2;
-    }
-    if (family === "amine") {
-      return 1;
-    }
-    if (family === "cycloalkene") {
-      return 4;
-    }
-    if (family === "diene") {
-      return 4;
-    }
-    if (family === "bicyclic") {
-      return 5;
-    }
-    if (family === "fused_aromatic") {
-      return 10;
-    }
-    if (family === "nitrile") {
-      return 2;
-    }
-    if (family === "nitro") {
-      return 1;
-    }
-    if (family === "amide") {
-      return 1;
-    }
-    return 1;
-  }
-
-  function familyMaximumCarbon(family) {
-    if (family === "diene" || family === "cycloalkene") {
-      return 8;
-    }
-    if (family === "bicyclic") {
-      return 5;
-    }
-    if (family === "fused_aromatic") {
-      return 14;
-    }
-    return MAX_CARBONS;
-  }
-
-  function halogenElements(parsed) {
-    return HALOGENS.filter(function (element) {
-      return parsed.elements && parsed.elements[element] > 0;
-    });
-  }
-
-  function hasOnlyCarbonHydrogen(parsed) {
-    return (parsed.oxygen || 0) === 0 &&
-      (parsed.elements.N || 0) === 0 &&
-      (parsed.halogen || 0) === 0;
-  }
-
-  function formulaMatchesFamily(parsed, family) {
-    var expectedHydrogen = expectedHydrogenForFamily(parsed.carbon, family);
-    if (expectedHydrogen !== null && parsed.hydrogen !== expectedHydrogen) {
-      return false;
-    }
-    if (family === "general_heteroatom") {
-      return !hasOnlyCarbonHydrogen(parsed);
-    }
-    if (family === "fused_aromatic") {
-      return hasOnlyCarbonHydrogen(parsed) &&
-        ((parsed.carbon === 10 && parsed.hydrogen === 8) ||
-         (parsed.carbon === 14 && parsed.hydrogen === 10));
-    }
-    if (family === "bicyclic") {
-      return hasOnlyCarbonHydrogen(parsed) &&
-        parsed.hydrogen === parsed.carbon * 2 - 2;
-    }
-    if (family === "haloalkane") {
-      return parsed.halogen === 1 && parsed.oxygen === 0;
-    }
-    if (family === "alcohol") {
-      return parsed.oxygen === 1 && parsed.halogen === 0 && (parsed.elements.N || 0) === 0;
-    }
-    if (family === "ester") {
-      return parsed.oxygen === 2 && parsed.halogen === 0 && (parsed.elements.N || 0) === 0;
-    }
-    if (family === "carboxylic acid") {
-      return parsed.oxygen === 2 && parsed.halogen === 0 && (parsed.elements.N || 0) === 0;
-    }
-    if (family === "aldehyde" || family === "ketone") {
-      return parsed.oxygen === 1 && parsed.halogen === 0 && (parsed.elements.N || 0) === 0;
-    }
-    if (family === "ether") {
-      return parsed.oxygen === 1 && parsed.halogen === 0 && (parsed.elements.N || 0) === 0;
-    }
-    if (family === "amine") {
-      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 0 && parsed.halogen === 0;
-    }
-    if (family === "nitrile") {
-      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 0 && parsed.halogen === 0;
-    }
-    if (family === "nitro") {
-      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 2 && parsed.halogen === 0;
-    }
-    if (family === "amide") {
-      return (parsed.elements.N || 0) === 1 && parsed.oxygen === 1 && parsed.halogen === 0;
-    }
-    return hasOnlyCarbonHydrogen(parsed);
-  }
-
-  function detectFamily(parsed) {
-    if (formulaMatchesFamily(parsed, "haloalkane")) {
-      return "haloalkane";
-    }
-    if (formulaMatchesFamily(parsed, "alcohol")) {
-      return "alcohol";
-    }
-    if (formulaMatchesFamily(parsed, "amine")) {
-      return "amine";
-    }
-    if (formulaMatchesFamily(parsed, "nitrile")) {
-      return "nitrile";
-    }
-    if (formulaMatchesFamily(parsed, "nitro")) {
-      return "nitro";
-    }
-    if (formulaMatchesFamily(parsed, "amide")) {
-      return "amide";
-    }
-    // Oxygen-containing family detection
-    if (parsed.oxygen > 0 && !parsed.halogen && (parsed.elements.N || 0) === 0) {
-      var expH = expectedHydrogenForFamily(parsed.carbon, "aldehyde");
-      if (parsed.oxygen === 1 && parsed.hydrogen === expH) {
-        return "aldehyde";
-      }
-      if (parsed.oxygen === 2 && parsed.hydrogen === expH) {
-        // For 1-carbon formulas, prefer carboxylic acid (esters need >= 2 carbons)
-        if (parsed.carbon === 1) return "carboxylic acid";
-        return "ester";
-      }
-      var etherH = expectedHydrogenForFamily(parsed.carbon, "ether");
-      if (parsed.oxygen === 1 && parsed.hydrogen === etherH) {
-        return "ether";
-      }
-    }
-    // Guard: formulas with heteroatoms can't be hydrocarbons
-    if (!hasOnlyCarbonHydrogen(parsed)) {
-      return "general_heteroatom";
-    }
-    if (formulaMatchesFamily(parsed, "fused_aromatic")) {
-      return "fused_aromatic";
-    }
-    if (parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkane")) {
-      return "alkane";
-    }
-    if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkene")) {
-      return "alkene";
-    }
-    if (parsed.carbon >= 2 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "alkyne")) {
-      return "alkyne";
-    }
-    if (parsed.carbon >= 6 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "aromatic")) {
-      return "aromatic";
-    }
-    if (parsed.carbon >= 3 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkane")) {
-      return "cycloalkane";
-    }
-    if (parsed.carbon >= 4 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "cycloalkene")) {
-      return "cycloalkene";
-    }
-    if (parsed.carbon >= 4 && parsed.hydrogen === expectedHydrogenForFamily(parsed.carbon, "diene")) {
-      return "diene";
-    }
-    // Fallback for non-standard hydrocarbons
-    if (hasOnlyCarbonHydrogen(parsed)) {
-      return "general_hydrocarbon";
-    }
-    return "general_heteroatom";
-  }
-
   function unsupportedFormulaHints(parsed, family) {
     if (parsed.carbon > MAX_CARBONS && family !== "fused_aromatic") {
       return ["Use a supported IUPAC name for one structure", "Try C12H26 or smaller", "Keep Auto mode on"];
@@ -2642,24 +2290,6 @@
       message: '"' + name + '" is recognized as a ' + FAMILY_INFO[analysis.family].label.toLowerCase() +
         ", but this app does not yet enumerate that family reliably."
     };
-  }
-
-  function formulaElementsForFamily(carbon, hydrogen, family, halogen) {
-    var elements = { C: carbon, H: hydrogen, N: 0, Br: 0, Cl: 0, F: 0, I: 0, O: 0 };
-    if (family === "haloalkane") {
-      elements[halogen || "Br"] = 1;
-    } else if (family === "alcohol" || family === "ether" || family === "aldehyde" || family === "ketone") {
-      elements.O = 1;
-    } else if (family === "ester" || family === "carboxylic acid" || family === "nitro") {
-      elements.O = 2;
-      if (family === "nitro") elements.N = 1;
-    } else if (family === "amine" || family === "nitrile") {
-      elements.N = 1;
-    } else if (family === "amide") {
-      elements.N = 1;
-      elements.O = 1;
-    }
-    return elements;
   }
 
   function analyzeFormula(input, selectedFamily) {

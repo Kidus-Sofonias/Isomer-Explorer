@@ -45,8 +45,12 @@ The chemistry engine's family-specific structure enumerators are in `chemengine/
 - `fused-aromatic.js` builds naphthalene, anthracene, and phenanthrene.
 - `haloalkane.js`, `alcohol.js`, and `amine.js` configure their compound-specific attachment rules over the shared `substituted-alkane.js` saturated-substitution algorithm.
 
-These modules receive shared graph, canonicalization, and naming helpers from `app.js`. The application integration, formula parsing and validation, name parsing, and shared graph/naming helpers remain in `app.js`; family algorithms can be changed independently without duplicating those primitives.
-The service worker precaches the family modules and the 3D viewer so these features remain available after an offline launch.
+Shared chemistry modules are also separated:
+
+- `chemengine/formula.js` normalizes, parses, and formats molecular formulas.
+- `chemengine/family-rules.js` owns molecular-formula patterns, family matching, and family detection.
+
+Family modules receive shared graph, canonicalization, and naming helpers from `app.js`. App integration, IUPAC name parsing, and shared graph/naming primitives still remain there; generators, formula handling, and family recognition can now be changed independently. The service worker precaches the engine modules and 3D viewer for offline use.
 
 ## Viewer Features
 

@@ -4,6 +4,19 @@ import { runInNewContext } from "node:vm";
 
 const sandbox = {};
 sandbox.self = sandbox;
+runInNewContext(readFileSync(new URL("./chemengine/formula.js", import.meta.url), "utf8"), sandbox);
+const formulaCore = sandbox.HydrocarbonEngineAlgorithms.formula(["F", "Cl", "Br", "I"]);
+runInNewContext(readFileSync(new URL("./chemengine/family-rules.js", import.meta.url), "utf8"), sandbox);
+const familyRules = sandbox.HydrocarbonEngineAlgorithms.familyRules({
+  MAX_CARBONS: 12,
+  HALOGENS: ["F", "Cl", "Br", "I"]
+});
+assert.equal(formulaCore.parseFormula("C5H11Br").formula, "C5H11Br");
+assert.equal(formulaCore.parseFormula("C₂H₆O").formula, "C2H6O");
+assert.equal(formulaCore.isFormulaInput("C5H12"), true);
+assert.equal(familyRules.detectFamily(formulaCore.parseFormula("C14H10")), "fused_aromatic");
+assert.equal(familyRules.expectedHydrogenForFamily(8, "diene"), 14);
+assert.equal(familyRules.formulaMatchesFamily(formulaCore.parseFormula("C5H11Br"), "haloalkane"), true);
 runInNewContext(readFileSync(new URL("./chemengine/families/alkane.js", import.meta.url), "utf8"), sandbox);
 runInNewContext(readFileSync(new URL("./chemengine/families/alkene-alkyne.js", import.meta.url), "utf8"), sandbox);
 runInNewContext(readFileSync(new URL("./chemengine/families/alkene.js", import.meta.url), "utf8"), sandbox);
@@ -24,6 +37,8 @@ const engine = sandbox.HydrocarbonApp;
 assert.ok(engine, "The chemistry engine should expose its API");
 for (const familyModule of [
   "alkane",
+  "familyRules",
+  "formula",
   "alkeneAlkyne",
   "alkene",
   "alkyne",
@@ -44,6 +59,8 @@ for (const familyModule of [
 const serviceWorker = readFileSync(new URL("./service-worker.js", import.meta.url), "utf8");
 for (const asset of [
   "./molecule-viewer-3d.js",
+  "./chemengine/formula.js",
+  "./chemengine/family-rules.js",
   "./chemengine/families/alkane.js",
   "./chemengine/families/alkene-alkyne.js",
   "./chemengine/families/alkene.js",

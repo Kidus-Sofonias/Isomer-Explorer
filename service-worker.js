@@ -1,9 +1,11 @@
-const CACHE_NAME = "isomer-explorer-v5";
+const CACHE_NAME = "isomer-explorer-v6";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./chemengine/formula.js",
+  "./chemengine/family-rules.js",
   "./molecule-viewer-3d.js",
   "./chemengine/families/alkane.js",
   "./chemengine/families/alkene-alkyne.js",
