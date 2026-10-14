@@ -14,8 +14,8 @@
     var compareStrings = helpers.compareStrings;
 
     return function generateBicyclicIsomers(carbonCount) {
-      if (carbonCount !== 5) {
-        throw new Error("Bicyclic enumeration currently supports C5 only.");
+      if (!Number.isInteger(carbonCount) || carbonCount < 5 || carbonCount > 7) {
+        throw new Error("Bicyclic enumeration supports C5 through C7.");
       }
 
       var seen = new Map();

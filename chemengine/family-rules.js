@@ -31,6 +31,7 @@
           family === "nitro" || family === "amide") return 1;
       if (family === "alkene" || family === "alkyne" || family === "ester" ||
           family === "ether" || family === "nitrile") return 2;
+      if (family === "ketone") return 3;
       if (family === "cycloalkane") return 3;
       if (family === "cycloalkene" || family === "diene") return 4;
       if (family === "bicyclic") return 5;
@@ -40,8 +41,8 @@
     }
 
     function familyMaximumCarbon(family) {
-      if (family === "diene" || family === "cycloalkene") return 8;
-      if (family === "bicyclic") return 5;
+      if (family === "diene" || family === "cycloalkene") return 10;
+      if (family === "bicyclic") return 7;
       if (family === "fused_aromatic") return 14;
       return MAX_CARBONS;
     }
@@ -85,6 +86,33 @@
       if (family === "nitro") return (parsed.elements.N || 0) === 1 && parsed.oxygen === 2 && parsed.halogen === 0;
       if (family === "amide") return (parsed.elements.N || 0) === 1 && parsed.oxygen === 1 && parsed.halogen === 0;
       return hasOnlyCarbonHydrogen(parsed);
+    }
+
+    // Preference order for auto-detection and for the ambiguity listing:
+    // functional-group families first (they explain the heteroatoms) and
+    // hydrocarbon patterns afterwards. detectFamily picks the first match;
+    // detectFamilyCandidates lists every family whose formula rules accept
+    // the formula AND whose bounded generator could actually run for this
+    // carbon count, so an ambiguous formula can be surfaced instead of
+    // silently flattened to one family.
+    var FAMILY_ORDER = [
+      "haloalkane", "alcohol", "ether", "ester", "carboxylic acid",
+      "aldehyde", "ketone", "amine", "nitrile", "nitro", "amide",
+      "alkane", "alkene", "alkyne", "cycloalkane", "cycloalkene", "diene",
+      "aromatic", "bicyclic", "fused_aromatic"
+    ];
+
+    function detectFamilyCandidates(parsed) {
+      var matches = [];
+      for (var i = 0; i < FAMILY_ORDER.length; i += 1) {
+        var family = FAMILY_ORDER[i];
+        if (!formulaMatchesFamily(parsed, family)) continue;
+        if (parsed.carbon < familyMinimumCarbon(family)) continue;
+        if (parsed.carbon > familyMaximumCarbon(family)) continue;
+        if (expectedHydrogenForFamily(parsed.carbon, family) == null) continue;
+        matches.push(family);
+      }
+      return matches;
     }
 
     function detectFamily(parsed) {
@@ -142,6 +170,8 @@
       hasOnlyCarbonHydrogen: hasOnlyCarbonHydrogen,
       formulaMatchesFamily: formulaMatchesFamily,
       detectFamily: detectFamily,
+      detectFamilyCandidates: detectFamilyCandidates,
+      familyLabelOrder: FAMILY_ORDER.slice(),
       formulaElementsForFamily: formulaElementsForFamily
     };
   };

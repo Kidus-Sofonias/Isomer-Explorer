@@ -16,8 +16,8 @@
     var compareStrings = helpers.compareStrings;
 
     return function generateCycloalkeneIsomers(carbonCount) {
-      if (!Number.isInteger(carbonCount) || carbonCount < 4 || carbonCount > 8) {
-        throw new Error("Cycloalkene enumeration supports C4 through C8.");
+      if (!Number.isInteger(carbonCount) || carbonCount < 4 || carbonCount > 10) {
+        throw new Error("Cycloalkene enumeration supports C4 through C10.");
       }
 
       var seen = new Map();
